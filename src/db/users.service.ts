@@ -11,6 +11,13 @@ export class UsersService {
 
   constructor(@InjectModel(User.name) private readonly userModel: Model<UserDocument>) {}
 
+  async findAll(limit: number, offset: number, status: string, search: string): Promise<UserDocument[]> {
+    const query: any = {};
+    if (status) query.status = status;
+    if (search) query.username = { $regex: search, $options: 'i' };
+    return this.userModel.find(query).sort({ createdAt: -1 }).limit(limit).skip(offset);
+  }
+
   async findByTelegramId(telegramId: number): Promise<UserDocument | null> {
     return this.userModel.findOne({ telegramId });
   }

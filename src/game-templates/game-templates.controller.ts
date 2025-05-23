@@ -12,7 +12,9 @@ import {
   BadRequestException 
 } from '@nestjs/common';
 import { GameTemplatesService, CreateGameTemplateDto } from '../db/game-templates.service';
+import { ApiTags } from '@nestjs/swagger';
 
+@ApiTags('Game Templates')
 @Controller('api/game-templates')
 export class GameTemplatesController {
   constructor(

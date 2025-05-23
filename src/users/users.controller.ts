@@ -180,7 +180,7 @@ export class UsersController {
     @Query('offset') offset = 0,
   ): Promise<ApiResponseDto<any>> {
     // TODO: Implement findAll method in UsersService
-    const users: any[] = [];
+    const users: any[] = await this.usersService.findAll(limit, offset, status, search);
     
     // Transform users to response format
     const transformedUsers = users.map(user => this.transformUserToResponse(user));

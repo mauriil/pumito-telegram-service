@@ -9,7 +9,9 @@ import {
 } from '@nestjs/common';
 import { GamesService } from '../db/games.service';
 import { UsersService } from '../db/users.service';
+import { ApiTags } from '@nestjs/swagger';
 
+@ApiTags('Games')
 @Controller('api/games')
 export class GamesController {
   constructor(
