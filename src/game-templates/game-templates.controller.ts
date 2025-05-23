@@ -15,7 +15,7 @@ import { GameTemplatesService, CreateGameTemplateDto } from '../db/game-template
 import { ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Game Templates')
-@Controller('api/game-templates')
+@Controller('game-templates')
 export class GameTemplatesController {
   constructor(
     private readonly gameTemplatesService: GameTemplatesService,

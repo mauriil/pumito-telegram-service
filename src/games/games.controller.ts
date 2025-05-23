@@ -12,7 +12,7 @@ import { UsersService } from '../db/users.service';
 import { ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Games')
-@Controller('api/games')
+@Controller('games')
 export class GamesController {
   constructor(
     private readonly gamesService: GamesService,
