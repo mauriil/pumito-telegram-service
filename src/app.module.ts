@@ -4,6 +4,11 @@ import { validationSchema } from './config/validation';
 import { DbModule } from './db/db.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { PaymentsModule } from './payments/payments.module';
+import { UsersModule } from './users/users.module';
+import { GamesModule } from './games/games.module';
+import { GameTemplatesModule } from './game-templates/game-templates.module';
+import { CreditPacksModule } from './credit-packs/credit-packs.module';
+import { InitializationModule } from './initialization/initialization.module';
 
 @Module({
   imports: [
@@ -11,6 +16,11 @@ import { PaymentsModule } from './payments/payments.module';
     DbModule,
     TelegramModule,
     PaymentsModule,
+    UsersModule,
+    GamesModule,
+    GameTemplatesModule,
+    CreditPacksModule,
+    InitializationModule,
   ],
 })
 export class AppModule {}

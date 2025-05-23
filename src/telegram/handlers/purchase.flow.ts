@@ -3,7 +3,7 @@ import { Context, Markup } from 'telegraf';
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { UsersService } from '../../db/users.service';
 import { PaymentsService } from '../../db/payments.service';
-import { PACKS } from '../constants/packs';
+import { CreditPacksService } from '../../db/credit-packs.service';
 import { PaymentDocument } from '../../db/schemas/payment.schema';
 
 @Injectable()
@@ -15,6 +15,7 @@ export class PurchaseFlow {
     private readonly users: UsersService,
     @Inject(forwardRef(() => PaymentsService))
     private readonly pay: PaymentsService,
+    private readonly creditPacksService: CreditPacksService,
   ) {}
 
   private async deleteLastMessages(ctx: Context) {
@@ -41,7 +42,7 @@ export class PurchaseFlow {
         return;
       }
 
-      const pack = PACKS.find(p => p.id === payment.packId);
+      const pack = await this.creditPacksService.findByPackId(payment.packId);
       if (!pack) {
         this.logger.warn(`Pack no encontrado para el pago: ${paymentId}`);
         return;
@@ -54,18 +55,18 @@ export class PurchaseFlow {
         case 'confirmed':
           message = 
             `✅ <b>¡Pago Confirmado!</b>\n\n` +
-            `🛍️ Pack: ${pack.name}\n` +
+            `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: ${pack.price} USDT\n` +
-            `🎫 Créditos añadidos: ${pack.credits}\n\n` +
+            `🎫 Créditos añadidos: ${pack.amount}\n\n` +
             `¡Gracias por tu compra!`;
           break;
 
         case 'expired':
           message = 
             `⏱️ <b>Pago Expirado</b>\n\n` +
-            `🛍️ Pack: ${pack.name}\n` +
+            `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: ${pack.price} USDT\n` +
-            `🎫 Créditos: ${pack.credits}\n\n` +
+            `🎫 Créditos: ${pack.amount}\n\n` +
             `El tiempo para realizar el pago ha expirado.\n` +
             `Puedes generar un nuevo enlace de pago usando el comando /buy`;
           keyboard = Markup.inlineKeyboard([
@@ -76,9 +77,9 @@ export class PurchaseFlow {
         case 'cancelled':
           message = 
             `❌ <b>Pago Cancelado</b>\n\n` +
-            `🛍️ Pack: ${pack.name}\n` +
+            `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: ${pack.price} USDT\n` +
-            `🎫 Créditos: ${pack.credits}\n\n` +
+            `🎫 Créditos: ${pack.amount}\n\n` +
             `Has cancelado el pago.\n` +
             `Puedes generar un nuevo enlace de pago usando el comando /buy`;
           keyboard = Markup.inlineKeyboard([
@@ -90,9 +91,9 @@ export class PurchaseFlow {
         case 'error':
           message = 
             `❌ <b>Error en el Pago</b>\n\n` +
-            `🛍️ Pack: ${pack.name}\n` +
+            `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: ${pack.price} USDT\n` +
-            `🎫 Créditos: ${pack.credits}\n\n` +
+            `🎫 Créditos: ${pack.amount}\n\n` +
             `Hubo un problema al procesar tu pago.\n` +
             `Puedes intentar nuevamente usando el comando /buy`;
           keyboard = Markup.inlineKeyboard([
@@ -145,26 +146,51 @@ export class PurchaseFlow {
         return;
       }
 
+      // Obtener packs activos de la base de datos
+      const packs = await this.creditPacksService.findActivePacks();
+
+      if (packs.length === 0) {
+        await ctx.reply('😔 No hay packs disponibles en este momento. Por favor, intenta más tarde.');
+        if (loadingMsg && loadingMsg.message_id) {
+          await ctx.deleteMessage(loadingMsg.message_id);
+        }
+        return;
+      }
+
       // Generar los links de pago para cada pack
       const keyboard = [];
-      for (const pack of PACKS) {
-        const url = await this.pay.createInvoice(user.id, pack, 'mercadopago');
-        keyboard.push([Markup.button.url(`${pack.name} - ${pack.price} USDT`, url)]);
+      for (const pack of packs) {
+        const packForPayment = {
+          id: pack.packId,
+          name: pack.title,
+          price: pack.price,
+          credits: pack.amount,
+          description: pack.description
+        };
+        const url = await this.pay.createInvoice(user.id, packForPayment, 'mercadopago');
+        
+        // Formato del botón con emoji y información clave usando callback
+        const buttonText = `${pack.emoji || '💎'} ${pack.title} - $${pack.price}`;
+        keyboard.push([Markup.button.callback(buttonText, `pack_${pack.packId}`)]);
       }
 
       // Mensaje final
+      const packsText = packs.map(p => {
+        const bonusText = p.bonusCredits > 0 ? ` +${p.bonusCredits} bonus` : '';
+        const discountText = p.discountPercentage > 0 ? ` (${p.discountPercentage}% OFF)` : '';
+        return `${p.emoji || '💎'} <b>${p.title}</b>${discountText}\n` +
+               `💰 Precio: $${p.price} ${p.currency}\n` +
+               `🎫 Créditos: ${p.amount}${bonusText}\n` +
+               `📝 ${p.description}\n`;
+      }).join('\n');
+
       const message = 
         `💰 <b>Tu Balance Actual</b>\n` +
         `Balance: ${user.balance} USDT\n` +
         `Créditos: ${user.credits}\n\n` +
-        `🛍️ <b>Packs Disponibles</b>\n` +
-        PACKS.map(p => 
-          `<b>${p.name}</b>\n` +
-          `Precio: ${p.price} USDT\n` +
-          `Créditos: ${p.credits}\n` +
-          `Descripción: ${p.description}\n`
-        ).join('\n') +
-        `\nElige un pack:`;
+        `🛍️ <b>Packs Disponibles</b>\n\n` +
+        packsText +
+        `\n💳 Elige un pack para continuar:`;
 
       // 3. Borrar el mensaje de cargando
       if (loadingMsg && loadingMsg.message_id) {
@@ -182,15 +208,15 @@ export class PurchaseFlow {
     }
   }
 
-  @Action(/p\d+/)
+  @Action(/pack_(.+)/)
   async onPack(@Ctx() ctx: Context & { match: RegExpExecArray }): Promise<void> {
     try {
-      const packId = ctx.match[0];
-      const pack = PACKS.find(p => p.id === packId);
+      const packId = ctx.match[1];
+      const pack = await this.creditPacksService.findByPackId(packId);
       
-      if (!pack) {
-        this.logger.warn(`Invalid pack ID requested: ${packId}`);
-        await ctx.reply('❌ Pack inválido. Por favor, selecciona un pack válido.');
+      if (!pack || !pack.isActive) {
+        this.logger.warn(`Invalid or inactive pack ID requested: ${packId}`);
+        await ctx.reply('❌ Pack inválido o no disponible. Por favor, selecciona un pack válido.');
         await ctx.answerCbQuery('Pack inválido');
         return;
       }
@@ -212,18 +238,26 @@ export class PurchaseFlow {
         return;
       }
 
+      // Calcular créditos totales (incluyendo bonus)
+      const totalCredits = pack.amount + (pack.bonusCredits || 0);
+
       // Verificar si el usuario tiene suficiente balance
       if (user.balance >= pack.price) {
         // Usar balance existente
         await this.users.addBalance(user.id, -pack.price);
-        await this.users.addCredits(user.id, pack.credits);
+        await this.users.addCredits(user.id, totalCredits);
+        
+        // Incrementar estadísticas del pack
+        await this.creditPacksService.incrementPurchaseStats(packId, pack.price);
         
         await this.deleteLastMessages(ctx);
+        
+        const bonusText = pack.bonusCredits > 0 ? ` (+${pack.bonusCredits} bonus)` : '';
         await ctx.reply(
           `✅ <b>Compra Exitosa</b>\n\n` +
-          `🛍️ Pack: ${pack.name}\n` +
-          `💰 Precio: ${pack.price} USDT\n` +
-          `🎫 Créditos añadidos: ${pack.credits}\n` +
+          `🛍️ Pack: ${pack.title}\n` +
+          `💰 Precio: $${pack.price} ${pack.currency}\n` +
+          `🎫 Créditos añadidos: ${totalCredits}${bonusText}\n` +
           `💳 Balance restante: ${user.balance - pack.price} USDT`,
           { parse_mode: 'HTML' }
         );
@@ -235,7 +269,7 @@ export class PurchaseFlow {
       // Verificar si hay un pago pendiente
       const pendingPayment = await this.pay.getPendingPayment(user.id);
       if (pendingPayment) {
-        const pendingPack = PACKS.find(p => p.id === pendingPayment.packId);
+        const pendingPack = await this.creditPacksService.findByPackId(pendingPayment.packId);
         if (!pendingPack) {
           this.logger.warn(`Pack no encontrado para el pago pendiente: ${pendingPayment.packId}`);
           await ctx.reply('❌ Error al recuperar información del pago pendiente.');
@@ -243,11 +277,12 @@ export class PurchaseFlow {
           return;
         }
 
+        const pendingBonusText = pendingPack.bonusCredits > 0 ? ` (+${pendingPack.bonusCredits} bonus)` : '';
         const message = 
           `⚠️ <b>Pago Pendiente</b>\n\n` +
-          `🛍️ Pack: ${pendingPack.name}\n` +
-          `💰 Precio: ${pendingPack.price} USDT\n` +
-          `🎫 Créditos: ${pendingPack.credits}\n` +
+          `🛍️ Pack: ${pendingPack.title}\n` +
+          `💰 Precio: $${pendingPack.price} ${pendingPack.currency}\n` +
+          `🎫 Créditos: ${pendingPack.amount + (pendingPack.bonusCredits || 0)}${pendingBonusText}\n` +
           `📝 Descripción: ${pendingPack.description}\n\n` +
           `⏱️ El enlace expirará en 30 minutos.\n\n` +
           `¿Qué deseas hacer?`;
@@ -267,8 +302,16 @@ export class PurchaseFlow {
       }
 
       // Generar enlaces de pago para diferentes métodos
+      const packForPayment = {
+        id: pack.packId,
+        name: pack.title,
+        price: pack.price,
+        credits: totalCredits,
+        description: pack.description
+      };
+
       const paymentMethods = [
-        { name: '💳 Mercado Pago', url: await this.pay.createInvoice(user.id, pack, 'mercadopago') }
+        { name: '💳 Mercado Pago', url: await this.pay.createInvoice(user.id, packForPayment, 'mercadopago') }
       ];
 
       const validPaymentMethods = paymentMethods.filter(method => method.url);
@@ -282,11 +325,15 @@ export class PurchaseFlow {
 
       await this.deleteLastMessages(ctx);
       
+      const bonusText = pack.bonusCredits > 0 ? ` (+${pack.bonusCredits} bonus)` : '';
+      const discountText = pack.discountPercentage > 0 ? `\n💸 <b>Descuento: ${pack.discountPercentage}%</b>` : '';
+      const originalPriceText = pack.originalPrice ? `\n~~Precio original: $${pack.originalPrice}~~` : '';
+      
       const message = 
-        `🛍️ <b>Pack ${pack.name}</b>\n\n` +
-        `💰 Precio: ${pack.price} USDT\n` +
-        `🎫 Créditos: ${pack.credits}\n` +
-        `📝 Descripción: ${pack.description}\n\n` +
+        `🛍️ <b>${pack.title}</b> ${pack.emoji || '💎'}\n\n` +
+        `💰 Precio: $${pack.price} ${pack.currency}${originalPriceText}${discountText}\n` +
+        `🎫 Créditos: ${totalCredits}${bonusText}\n` +
+        `📝 ${pack.description}\n\n` +
         `💳 Haz clic en el botón para pagar con Mercado Pago:\n\n` +
         `⚠️ El pago se procesará automáticamente una vez confirmado.\n` +
         `⏱️ El enlace expirará en 30 minutos.`;
