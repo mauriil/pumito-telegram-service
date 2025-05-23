@@ -1,14 +1,18 @@
-import { Ctx, Command, Update } from 'nestjs-telegraf';
+import { Ctx, Command, Update, Action } from 'nestjs-telegraf';
 import { Context } from 'telegraf';
 import { Injectable, Logger } from '@nestjs/common';
 import { UsersService } from '../../db/users.service';
+import { PurchaseFlow } from './purchase.flow';
 
 @Injectable()
 @Update()
 export class CommandsHandler {
   private readonly logger = new Logger(CommandsHandler.name);
 
-  constructor(private readonly users: UsersService) {}
+  constructor(
+    private readonly users: UsersService,
+    private readonly purchaseFlow: PurchaseFlow
+  ) {}
 
   @Command('start')
   async onStart(@Ctx() ctx: Context) {
@@ -30,7 +34,7 @@ export class CommandsHandler {
           {
             reply_markup: {
               inline_keyboard: [
-                [{ text: '🎮 Jugar', web_app: { url: 'https://tu-app-url.com' } }]
+                [{ text: '🎮 Jugar', web_app: { url: 'https://pumito-mini-app.onrender.com' } }]
               ]
             }
           }
@@ -47,8 +51,8 @@ export class CommandsHandler {
             parse_mode: 'HTML',
             reply_markup: {
               inline_keyboard: [
-                [{ text: '🎮 Jugar', web_app: { url: 'https://tu-app-url.com' } }],
-                [{ text: '💎 Comprar Tokens', callback_data: 'buy_tokens' }]
+                [{ text: '🎮 Jugar', web_app: { url: 'https://pumito-mini-app.onrender.com' } }],
+                [{ text: '🪙 Comprar Fichas', callback_data: 'buy_tokens' }]
               ]
             }
           }
@@ -57,6 +61,18 @@ export class CommandsHandler {
     } catch (error) {
       this.logger.error(`Error en comando start: ${error.message}`, error.stack);
       await ctx.reply('❌ Lo siento, hubo un error al procesar tu solicitud. Por favor, intenta nuevamente.');
+    }
+  }
+
+  @Action('buy_tokens')
+  async onBuyTokens(@Ctx() ctx: Context): Promise<void> {
+    try {
+      await ctx.answerCbQuery('🛍️ Abriendo menú de compras...');
+      await this.purchaseFlow.buy(ctx);
+    } catch (error) {
+      this.logger.error(`Error en callback buy_tokens: ${error.message}`, error.stack);
+      await ctx.reply('❌ Error al abrir el menú de compras. Por favor, intenta usar /buy');
+      await ctx.answerCbQuery('Error al abrir menú');
     }
   }
 }
