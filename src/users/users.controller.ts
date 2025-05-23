@@ -48,6 +48,61 @@ export class UsersController {
     private readonly gamesService: GamesService,
   ) {}
 
+  private transformUserToResponse(user: any): UserResponseDto {
+    return {
+      id: user._id.toString(),
+      telegramId: user.telegramId,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      fullName: user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName || user.lastName,
+      username: user.username,
+      balance: user.balance,
+      credits: user.credits,
+      status: user.status as UserStatus || UserStatus.ACTIVE,
+      totalGamesPlayed: user.gameStats?.totalGames || 0,
+      totalGamesWon: user.gameStats?.gamesWon || 0,
+      winRate: (user.gameStats?.totalGames || 0) > 0 ? ((user.gameStats?.gamesWon || 0) / user.gameStats.totalGames) * 100 : 0,
+      totalPurchases: user.totalPurchases || 0,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      lastLoginAt: user.lastLoginAt,
+    };
+  }
+
+  private transformGameToResponse(game: any): GameResponseDto {
+    return {
+      id: game._id.toString(),
+      playerTelegramId: game.playerTelegramId,
+      opponentTelegramId: game.opponentTelegramId,
+      gameType: game.gameType,
+      gameId: game.gameId,
+      status: game.status,
+      creditsWagered: game.creditsWagered,
+      isRanked: game.isRanked,
+      startedAt: game.startedAt,
+      endedAt: game.endedAt,
+      duration: game.duration,
+      playerScore: game.playerScore,
+      opponentScore: game.opponentScore,
+    };
+  }
+
+  private transformUserToStats(user: any): UserStatsDto {
+    return {
+      userId: user._id.toString(),
+      telegramId: user.telegramId,
+      displayName: user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName || user.username || `User ${user.telegramId}`,
+      balance: user.balance,
+      credits: user.credits,
+      totalGamesPlayed: user.gameStats?.totalGames || 0,
+      totalGamesWon: user.gameStats?.gamesWon || 0,
+      winRate: (user.gameStats?.totalGames || 0) > 0 ? ((user.gameStats?.gamesWon || 0) / user.gameStats.totalGames) * 100 : 0,
+      totalPurchases: user.totalPurchases || 0,
+      status: user.status as UserStatus || UserStatus.ACTIVE,
+      lastActivityAt: user.lastLoginAt || user.updatedAt,
+    };
+  }
+
   @Get()
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
@@ -128,27 +183,7 @@ export class UsersController {
     const users: any[] = [];
     
     // Transform users to response format
-    const transformedUsers = users.map(user => ({
-      id: user._id.toString(),
-      telegramId: user.telegramId,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      fullName: user.fullName,
-      username: user.username,
-      email: user.email,
-      balance: user.balance,
-      credits: user.credits,
-      status: user.status || 'active',
-      isVerified: user.isVerified || false,
-      totalGamesPlayed: user.totalGamesPlayed || 0,
-      totalGamesWon: user.totalGamesWon || 0,
-      winRate: user.totalGamesPlayed > 0 ? (user.totalGamesWon / user.totalGamesPlayed) * 100 : 0,
-      totalPurchases: user.totalPurchases || 0,
-      totalSpent: user.totalSpent || 0,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      lastLoginAt: user.lastLoginAt,
-    }));
+    const transformedUsers = users.map(user => this.transformUserToResponse(user));
 
     return {
       success: true,
@@ -219,27 +254,7 @@ export class UsersController {
       throw new NotFoundException('Usuario no encontrado');
     }
 
-    const userResponse: UserResponseDto = {
-      id: user._id.toString(),
-      telegramId: user.telegramId,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      fullName: user.fullName,
-      username: user.username,
-      email: user.email,
-      balance: user.balance,
-      credits: user.credits,
-      status: user.status || 'active',
-      isVerified: user.isVerified || false,
-      totalGamesPlayed: user.totalGamesPlayed || 0,
-      totalGamesWon: user.totalGamesWon || 0,
-      winRate: user.totalGamesPlayed > 0 ? (user.totalGamesWon / user.totalGamesPlayed) * 100 : 0,
-      totalPurchases: user.totalPurchases || 0,
-      totalSpent: user.totalSpent || 0,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      lastLoginAt: user.lastLoginAt,
-    };
+    const userResponse = this.transformUserToResponse(user);
 
     return {
       success: true,
@@ -325,28 +340,18 @@ export class UsersController {
   @HttpCode(HttpStatus.CREATED)
   async createUser(@Body() createUserData: CreateUserDto): Promise<ApiResponseDto<UserResponseDto>> {
     try {
-      const user = await this.usersService.create(createUserData);
+      // Crear un contexto simulado para usar upsertFromContext
+      const mockContext = {
+        from: {
+          id: createUserData.telegramId,
+          username: createUserData.username,
+          first_name: createUserData.firstName,
+        }
+      } as any;
       
-      const userResponse: UserResponseDto = {
-        id: user._id.toString(),
-        telegramId: user.telegramId,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        fullName: user.fullName,
-        username: user.username,
-        email: user.email,
-        balance: user.balance,
-        credits: user.credits,
-        status: user.status || 'active',
-        isVerified: user.isVerified || false,
-        totalGamesPlayed: user.totalGamesPlayed || 0,
-        totalGamesWon: user.totalGamesWon || 0,
-        winRate: 0,
-        totalPurchases: user.totalPurchases || 0,
-        totalSpent: user.totalSpent || 0,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      };
+      const user = await this.usersService.upsertFromContext(mockContext);
+      
+      const userResponse = this.transformUserToResponse(user);
 
       return {
         success: true,
@@ -426,32 +431,20 @@ export class UsersController {
     @Param('telegramId', ParseIntPipe) telegramId: number,
     @Body() updateData: UpdateUserDto
   ): Promise<ApiResponseDto<UserResponseDto>> {
-    const user = await this.usersService.update(telegramId, updateData);
+    const user = await this.usersService.findByTelegramId(telegramId);
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
     }
+    
+    // Actualizar campos permitidos
+    if (updateData.firstName !== undefined) user.firstName = updateData.firstName;
+    if (updateData.lastName !== undefined) user.lastName = updateData.lastName;
+    if (updateData.username !== undefined) user.username = updateData.username;
+    if (updateData.status !== undefined) user.status = updateData.status as any;
+    
+    const updatedUser = await user.save();
 
-    const userResponse: UserResponseDto = {
-      id: user._id.toString(),
-      telegramId: user.telegramId,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      fullName: user.fullName,
-      username: user.username,
-      email: user.email,
-      balance: user.balance,
-      credits: user.credits,
-      status: user.status || 'active',
-      isVerified: user.isVerified || false,
-      totalGamesPlayed: user.totalGamesPlayed || 0,
-      totalGamesWon: user.totalGamesWon || 0,
-      winRate: user.totalGamesPlayed > 0 ? (user.totalGamesWon / user.totalGamesPlayed) * 100 : 0,
-      totalPurchases: user.totalPurchases || 0,
-      totalSpent: user.totalSpent || 0,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      lastLoginAt: user.lastLoginAt,
-    };
+    const userResponse = this.transformUserToResponse(updatedUser);
 
     return {
       success: true,
@@ -746,22 +739,9 @@ export class UsersController {
       throw new NotFoundException('Usuario no encontrado');
     }
 
-    const games = await this.gamesService.findByPlayer(telegramId);
+    const games = await this.gamesService.getGamesByPlayer(telegramId, limit);
     
-    const transformedGames = games.map(game => ({
-      id: game._id.toString(),
-      playerTelegramId: game.playerTelegramId,
-      opponentTelegramId: game.opponentTelegramId,
-      gameType: game.gameType,
-      gameId: game.gameId,
-      status: game.status,
-      creditsWagered: game.creditsWagered,
-      winnerTelegramId: game.winnerTelegramId,
-      isRanked: game.isRanked,
-      result: game.result,
-      createdAt: game.createdAt,
-      completedAt: game.completedAt,
-    }));
+    const transformedGames = games.map(game => this.transformGameToResponse(game));
 
     return {
       success: true,
@@ -869,7 +849,7 @@ export class UsersController {
     const createGameDto: ServiceCreateGameDto = {
       playerTelegramId: telegramId,
       opponentTelegramId: createGameData.opponentTelegramId,
-      gameType: createGameData.gameType,
+      gameType: createGameData.gameType as any, // Los enums ahora coinciden
       gameId: createGameData.gameId,
       creditsWagered: createGameData.creditsWagered,
       isRanked: createGameData.isRanked,
@@ -882,20 +862,7 @@ export class UsersController {
       await this.usersService.addCredits(user._id.toString(), -createGameData.creditsWagered);
     }
 
-    const gameResponse: GameResponseDto = {
-      id: game._id.toString(),
-      playerTelegramId: game.playerTelegramId,
-      opponentTelegramId: game.opponentTelegramId,
-      gameType: game.gameType,
-      gameId: game.gameId,
-      status: game.status,
-      creditsWagered: game.creditsWagered,
-      winnerTelegramId: game.winnerTelegramId,
-      isRanked: game.isRanked,
-      result: game.result,
-      createdAt: game.createdAt,
-      completedAt: game.completedAt,
-    };
+    const gameResponse = this.transformGameToResponse(game);
 
     return {
       success: true,
@@ -950,20 +917,7 @@ export class UsersController {
       throw new NotFoundException('Usuario no encontrado');
     }
 
-    const userStats: UserStatsDto = {
-      userId: user._id.toString(),
-      telegramId: user.telegramId,
-      displayName: user.fullName || user.firstName || user.username || `User ${user.telegramId}`,
-      balance: user.balance,
-      credits: user.credits,
-      totalGamesPlayed: user.totalGamesPlayed || 0,
-      totalGamesWon: user.totalGamesWon || 0,
-      winRate: user.totalGamesPlayed > 0 ? (user.totalGamesWon / user.totalGamesPlayed) * 100 : 0,
-      totalPurchases: user.totalPurchases || 0,
-      totalSpent: user.totalSpent || 0,
-      status: user.status || 'active',
-      lastActivityAt: user.lastLoginAt || user.updatedAt,
-    };
+    const userStats = this.transformUserToStats(user);
 
     return {
       success: true,

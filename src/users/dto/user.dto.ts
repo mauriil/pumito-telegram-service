@@ -18,24 +18,22 @@ import {
 export enum UserStatus {
   ACTIVE = 'active',
   SUSPENDED = 'suspended',
-  BANNED = 'banned',
-  PENDING = 'pending'
+  BANNED = 'banned'
 }
 
 export enum GameType {
-  TAP_REACTION = 'tap-reaction',
-  MEMORY_CARDS = 'memory-cards',
-  WORD_PUZZLE = 'word-puzzle',
-  COLOR_MATCH = 'color-match',
-  NUMBER_SEQUENCE = 'number-sequence',
-  TRIVIA_CHALLENGE = 'trivia-challenge'
+  SINGLE_PLAYER = 'single_player',
+  MULTIPLAYER = 'multiplayer',
+  TOURNAMENT = 'tournament'
 }
 
 export enum GameStatus {
-  PENDING = 'pending',
-  ACTIVE = 'active',
+  STARTED = 'started',
   COMPLETED = 'completed',
-  CANCELLED = 'cancelled'
+  ABANDONED = 'abandoned',
+  WON = 'won',
+  LOST = 'lost',
+  DRAW = 'draw'
 }
 
 export class CreateUserDto {
@@ -73,14 +71,6 @@ export class CreateUserDto {
   @IsString()
   @Length(3, 32)
   username?: string;
-
-  @ApiPropertyOptional({
-    description: 'User email address',
-    example: 'juan@example.com'
-  })
-  @IsOptional()
-  @IsEmail()
-  email?: string;
 
   @ApiPropertyOptional({
     description: 'Initial balance for the user',
@@ -132,14 +122,6 @@ export class UpdateUserDto {
   username?: string;
 
   @ApiPropertyOptional({
-    description: 'User email address',
-    example: 'juan.carlos@example.com'
-  })
-  @IsOptional()
-  @IsEmail()
-  email?: string;
-
-  @ApiPropertyOptional({
     description: 'User status',
     enum: UserStatus,
     example: 'active'
@@ -147,14 +129,6 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEnum(UserStatus)
   status?: UserStatus;
-
-  @ApiPropertyOptional({
-    description: 'Whether the user is verified',
-    example: true
-  })
-  @IsOptional()
-  @IsBoolean()
-  isVerified?: boolean;
 }
 
 export class UserResponseDto {
@@ -194,12 +168,6 @@ export class UserResponseDto {
   })
   username?: string;
 
-  @ApiPropertyOptional({
-    description: 'User email address',
-    example: 'juan@example.com'
-  })
-  email?: string;
-
   @ApiProperty({
     description: 'User balance in USD',
     example: 15.50
@@ -218,12 +186,6 @@ export class UserResponseDto {
     example: 'active'
   })
   status: UserStatus;
-
-  @ApiProperty({
-    description: 'Whether the user is verified',
-    example: true
-  })
-  isVerified: boolean;
 
   @ApiProperty({
     description: 'Total number of games played',
@@ -248,12 +210,6 @@ export class UserResponseDto {
     example: 3
   })
   totalPurchases: number;
-
-  @ApiProperty({
-    description: 'Total amount spent',
-    example: 45.97
-  })
-  totalSpent: number;
 
   @ApiProperty({
     description: 'Date when user was created',
@@ -283,11 +239,9 @@ export class UserResponseDto {
 export class CreateGameDto {
   @ApiProperty({
     description: 'ID of the game template',
-    example: 'tap-reaction',
-    enum: GameType
+    example: 'tap-reaction'
   })
   @IsString()
-  @IsEnum(GameType)
   gameId: string;
 
   @ApiPropertyOptional({
@@ -302,7 +256,7 @@ export class CreateGameDto {
   @ApiProperty({
     description: 'Type of game',
     enum: GameType,
-    example: 'tap-reaction'
+    example: 'single_player'
   })
   @IsEnum(GameType)
   gameType: GameType;
@@ -349,7 +303,7 @@ export class GameResponseDto {
   @ApiProperty({
     description: 'Type of game',
     enum: GameType,
-    example: 'tap-reaction'
+    example: 'single_player'
   })
   gameType: GameType;
 
@@ -362,7 +316,7 @@ export class GameResponseDto {
   @ApiProperty({
     description: 'Current game status',
     enum: GameStatus,
-    example: 'active'
+    example: 'started'
   })
   status: GameStatus;
 
@@ -372,12 +326,6 @@ export class GameResponseDto {
   })
   creditsWagered?: number;
 
-  @ApiPropertyOptional({
-    description: 'Telegram ID of the winner',
-    example: 123456789
-  })
-  winnerTelegramId?: number;
-
   @ApiProperty({
     description: 'Whether this is a ranked game',
     example: true
@@ -385,18 +333,12 @@ export class GameResponseDto {
   isRanked: boolean;
 
   @ApiPropertyOptional({
-    description: 'Game result data',
-    example: { playerScore: 850, opponentScore: 720, duration: 30000 }
-  })
-  result?: any;
-
-  @ApiProperty({
-    description: 'Date when game was created',
+    description: 'Date when game was started',
     example: '2024-01-20T15:45:00.000Z',
     type: 'string',
     format: 'date-time'
   })
-  createdAt: Date;
+  startedAt?: Date;
 
   @ApiPropertyOptional({
     description: 'Date when game was completed',
@@ -404,7 +346,25 @@ export class GameResponseDto {
     type: 'string',
     format: 'date-time'
   })
-  completedAt?: Date;
+  endedAt?: Date;
+
+  @ApiPropertyOptional({
+    description: 'Game duration in seconds',
+    example: 150
+  })
+  duration?: number;
+
+  @ApiPropertyOptional({
+    description: 'Player score',
+    example: 850
+  })
+  playerScore?: number;
+
+  @ApiPropertyOptional({
+    description: 'Opponent score',
+    example: 720
+  })
+  opponentScore?: number;
 }
 
 export class UserStatsDto {
@@ -461,12 +421,6 @@ export class UserStatsDto {
     example: 3
   })
   totalPurchases: number;
-
-  @ApiProperty({
-    description: 'Total amount spent',
-    example: 45.97
-  })
-  totalSpent: number;
 
   @ApiProperty({
     description: 'Account status',
