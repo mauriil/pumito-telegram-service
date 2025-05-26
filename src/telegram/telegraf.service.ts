@@ -1,6 +1,6 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectBot } from 'nestjs-telegraf';
-import { Telegraf, Context } from 'telegraf';
+import { Telegraf } from 'telegraf';
 import { PurchaseFlow } from './handlers/purchase.flow';
 import { UsersService } from '../db/users.service';
 import { PaymentsService } from '../db/payments.service';
@@ -50,7 +50,7 @@ export class TelegrafService {
       switch (status) {
         case 'confirmed':
           message = 
-            `✅ <b>¡Pago Confirmado!</b>\n\n` +
+            `<b>¡Pago Confirmado!</b>\n\n` +
             `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: $${pack.price} ${pack.currency}\n` +
             `🎫 Créditos añadidos: ${pack.amount + (pack.bonusCredits || 0)}\n\n` +
@@ -74,7 +74,7 @@ export class TelegrafService {
 
         case 'cancelled':
           message = 
-            `❌ <b>Pago Cancelado</b>\n\n` +
+            `<b>Pago Cancelado</b>\n\n` +
             `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: $${pack.price} ${pack.currency}\n` +
             `🎫 Créditos: ${pack.amount + (pack.bonusCredits || 0)}\n\n` +
@@ -90,7 +90,7 @@ export class TelegrafService {
         case 'rejected':
         case 'error':
           message = 
-            `❌ <b>Error en el Pago</b>\n\n` +
+            `<b>Error en el Pago</b>\n\n` +
             `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: $${pack.price} ${pack.currency}\n` +
             `🎫 Créditos: ${pack.amount + (pack.bonusCredits || 0)}\n\n` +
