@@ -139,7 +139,7 @@ export class PaymentsService {
 
   async markConfirmed(orderId: string): Promise<void> {
     try {
-      const payment = await this.paymentModel.findById(orderId);
+      const payment = await this.paymentModel.findOne({ paymentId: orderId });
       if (!payment) {
         this.logger.warn(`Pago no encontrado para la orden: ${orderId}`);
         return;
