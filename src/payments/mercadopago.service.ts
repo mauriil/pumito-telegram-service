@@ -107,18 +107,18 @@ export class MercadoPagoService {
       throw new Error('BASE_URL no está configurada en las variables de entorno');
     }
 
-    const preferenceData = {
-      items: [{
-        id: payload.external_reference,
-        title: payload.description.substring(0, 256), // MercadoPago limita el título a 256 caracteres
-        quantity: 1,
-        unit_price: Number(Number(payload.amount).toFixed(2)), // Asegurar formato decimal correcto
-        currency_id: this.currencyId
-      }],
-      external_reference: payload.external_reference,
-      notification_url: `${this.baseUrl}/webhook/mercadopago`,
-      auto_return: 'approved' // Agregar auto_return para mejorar la experiencia
-    };
+          const preferenceData = {
+        items: [{
+          id: payload.external_reference,
+          title: payload.description.substring(0, 256), // MercadoPago limita el título a 256 caracteres
+          quantity: 1,
+          unit_price: Number(Number(payload.amount).toFixed(2)), // Asegurar formato decimal correcto
+          currency_id: this.currencyId
+        }],
+        external_reference: payload.external_reference,
+        notification_url: `${this.baseUrl}/webhook/mercadopago`
+        // Sin auto_return ni back_urls - solo dependemos del webhook para procesar pagos
+      };
 
     this.logger.debug(`Datos de preferencia a enviar: ${JSON.stringify(preferenceData, null, 2)}`);
 
