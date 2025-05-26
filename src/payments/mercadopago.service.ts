@@ -163,7 +163,6 @@ export class MercadoPagoService {
     if (!this.baseUrl) {
       throw new Error('BASE_URL no está configurada en las variables de entorno');
     }
-    console.log('🚀 ~ MercadoPagoService ~ createPreference ~ this.baseUrl:', this.baseUrl);
 
     const preferenceData = {
       items: [

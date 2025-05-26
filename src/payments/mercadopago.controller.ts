@@ -278,160 +278,44 @@ export class MercadoPagoController {
 
   @Get('mercadopago')
   @ApiOperation({ summary: 'Handle MercadoPago back URLs - Success, Failure, Pending' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Payment status processed successfully' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Payment status page displayed' })
   async handleBackUrl(@Query() query: any, @Res() res: Response): Promise<Response> {
-    try {
-      this.logger.log(`Back URL recibida de MercadoPago: ${JSON.stringify(query)}`);
+    this.logger.log(`Back URL recibida de MercadoPago: ${JSON.stringify(query)}`);
 
-      // Extraer parámetros de la query
-      const { status, collection_status, preference_id, external_reference } = query;
+    // Extraer parámetros de la query para determinar qué vista mostrar
+    const { status, collection_status } = query;
 
-      // Validar que tenemos los parámetros mínimos necesarios
-      if (!external_reference) {
-        this.logger.warn('external_reference no encontrado en los parámetros de back URL');
-        return this.renderPaymentResult(res, 'error', 'Referencia de pago no encontrada');
-      }
-
-      // El external_reference es nuestro payment ID interno
-      const paymentId = preference_id;
-      this.logger.log(`Procesando back URL para pago ID: ${paymentId}`);
-
-      // Verificar el estado del pago en MercadoPago usando el collection_id o payment_id
-      const paymentStatus = {
-        approved: status === 'approved' && collection_status === 'approved',
-        status: status || 'unknown',
-        statusDetail: `Status: ${status}, Collection Status: ${collection_status}`,
-      };
-
-      // Procesar el pago según el estado
-      if (paymentStatus.approved) {
-        try {
-          // Intentar confirmar el pago y procesar los créditos
-          await this.payments.markConfirmed(paymentId);
-          this.logger.log(`Pago confirmado via back URL para la orden: ${paymentId}`);
-
-          // Actualizar mensaje en Telegram
-          const payment = await this.payments.getPaymentById(paymentId);
-          if (payment && payment.messageId) {
-            await this.telegraf.updatePaymentMessage(payment.userId, paymentId, 'confirmed');
-          }
-
-          return this.renderPaymentResult(res, 'success', 'Pago confirmado exitosamente');
-        } catch (confirmError) {
-          this.logger.error(
-            `Error confirmando pago exitoso: ${confirmError.message}`,
-            confirmError.stack,
-          );
-
-          // Marcar como fallido sin intentar reembolso (ya no está disponible)
-          await this.payments.markFailed(
-            paymentId,
-            `Pago exitoso pero falló al procesar créditos: ${confirmError.message}`,
-          );
-
-          // Actualizar mensaje en Telegram
-          const paymentForUpdate = await this.payments.getPaymentById(paymentId);
-          if (paymentForUpdate && paymentForUpdate.messageId) {
-            await this.telegraf.updatePaymentMessage(paymentForUpdate.userId, paymentId, 'failed');
-          }
-
-          // Notificar al usuario sobre el problema
-          const paymentForNotification = await this.payments.getPaymentById(paymentId);
-          if (paymentForNotification) {
-            await this.telegraf.sendNotification(
-              paymentForNotification.userId,
-              `⚠️ <b>Problema con tu pago</b>\n\n` +
-                `Tu pago fue procesado exitosamente en MercadoPago, pero hubo un error al añadir los créditos.\n` +
-                `Por favor contacta soporte con el ID de pago: ${paymentId}\n\n` +
-                `Nuestro equipo resolverá este problema lo antes posible.`,
-            );
-          }
-
-          return this.renderPaymentResult(
-            res,
-            'error',
-            'Pago procesado pero hubo un error. Por favor contacta soporte.',
-          );
-        }
-      } else {
-        // Determinar si es un rechazo o está pendiente
-        const isRejected = status === 'rejected' || status === 'cancelled' || status === 'failure';
-        const isPending = status === 'pending' || status === 'in_process';
-
-        if (isRejected) {
-          await this.payments.markRejected(
-            paymentId,
-            paymentStatus.status,
-            paymentStatus.statusDetail,
-          );
-          this.logger.log(
-            `Pago rechazado via back URL para la orden: ${paymentId} - ${paymentStatus.status}: ${paymentStatus.statusDetail}`,
-          );
-
-          // Actualizar mensaje en Telegram
-          const payment = await this.payments.getPaymentById(paymentId);
-          if (payment && payment.messageId) {
-            await this.telegraf.updatePaymentMessage(payment.userId, paymentId, 'rejected');
-          }
-
-          return this.renderPaymentResult(res, 'failure', 'El pago fue rechazado o cancelado');
-        } else if (isPending) {
-          this.logger.log(`Pago pendiente via back URL para la orden: ${paymentId}`);
-          return this.renderPaymentResult(res, 'pending', 'El pago está siendo procesado');
-        } else {
-          this.logger.log(
-            `Estado de pago desconocido via back URL para la orden: ${paymentId} - ${paymentStatus.status}`,
-          );
-          return this.renderPaymentResult(res, 'pending', 'El pago está siendo verificado');
-        }
-      }
-    } catch (error) {
-      this.logger.error(`Error procesando back URL: ${error.message}`, error.stack);
-
-      // Intentar marcar el pago como error si tenemos el ID
-      const { preference_id, external_reference } = query;
-      const paymentId = preference_id || external_reference;
-
-      if (paymentId) {
-        try {
-          await this.payments.markError(paymentId, `Error en back URL: ${error.message}`);
-
-          // Actualizar mensaje en Telegram
-          const payment = await this.payments.getPaymentById(paymentId);
-          if (payment && payment.messageId) {
-            await this.telegraf.updatePaymentMessage(payment.userId, paymentId, 'error');
-          }
-        } catch (markError) {
-          this.logger.error(
-            `Error marcando pago como error en back URL: ${markError.message}`,
-            markError.stack,
-          );
-        }
-      }
-
-      return this.renderPaymentResult(res, 'error', 'Error al procesar el pago');
+    // Determinar el tipo de vista basado en los parámetros
+    if (status === 'approved' && collection_status === 'approved') {
+      return this.renderPaymentResult(res, 'success', 'Tu pago ha sido procesado exitosamente');
+    } else if (status === 'rejected' || status === 'cancelled' || status === 'failure') {
+      return this.renderPaymentResult(res, 'failure', 'El pago fue rechazado o cancelado');
+    } else if (status === 'pending' || status === 'in_process') {
+      return this.renderPaymentResult(res, 'pending', 'Tu pago está siendo procesado');
+    } else {
+      return this.renderPaymentResult(res, 'pending', 'Tu pago está siendo verificado');
     }
   }
 
   @Get('mercadopago/success')
-  @ApiOperation({ summary: 'Handle MercadoPago success back URL' })
+  @ApiOperation({ summary: 'Display MercadoPago success page' })
   async handleSuccessUrl(@Query() query: any, @Res() res: Response): Promise<Response> {
     this.logger.log(`Success URL recibida: ${JSON.stringify(query)}`);
-    return this.handleBackUrl(query, res);
+    return this.renderPaymentResult(res, 'success', 'Tu pago ha sido procesado exitosamente');
   }
 
   @Get('mercadopago/failure')
-  @ApiOperation({ summary: 'Handle MercadoPago failure back URL' })
+  @ApiOperation({ summary: 'Display MercadoPago failure page' })
   async handleFailureUrl(@Query() query: any, @Res() res: Response): Promise<Response> {
     this.logger.log(`Failure URL recibida: ${JSON.stringify(query)}`);
-    return this.handleBackUrl(query, res);
+    return this.renderPaymentResult(res, 'failure', 'El pago fue rechazado o cancelado');
   }
 
   @Get('mercadopago/pending')
-  @ApiOperation({ summary: 'Handle MercadoPago pending back URL' })
+  @ApiOperation({ summary: 'Display MercadoPago pending page' })
   async handlePendingUrl(@Query() query: any, @Res() res: Response): Promise<Response> {
     this.logger.log(`Pending URL recibida: ${JSON.stringify(query)}`);
-    return this.handleBackUrl(query, res);
+    return this.renderPaymentResult(res, 'pending', 'Tu pago está siendo procesado');
   }
 
   private renderPaymentResult(
