@@ -1,10 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { 
-  IsString, 
-  IsNumber, 
-  IsBoolean, 
-  IsArray, 
-  IsOptional, 
+import {
+  IsString,
+  IsNumber,
+  IsBoolean,
+  IsArray,
+  IsOptional,
   IsDateString,
   IsEnum,
   IsPositive,
@@ -12,23 +12,21 @@ import {
   Max,
   Length,
   ArrayMinSize,
-  ValidateNested,
-  IsObject
+  IsObject,
 } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
 
 export enum CreditPackCategory {
   STARTER = 'starter',
-  VALUE = 'value', 
+  VALUE = 'value',
   PREMIUM = 'premium',
   OFFER = 'offer',
-  SPECIAL = 'special'
+  SPECIAL = 'special',
 }
 
 export enum CreditPackCurrency {
   USD = 'USD',
   EUR = 'EUR',
-  ARS = 'ARS'
+  ARS = 'ARS',
 }
 
 export class CreateCreditPackDto {
@@ -36,7 +34,7 @@ export class CreateCreditPackDto {
     description: 'Unique identifier for the pack',
     example: 'premium-pack-2024',
     minLength: 3,
-    maxLength: 50
+    maxLength: 50,
   })
   @IsString()
   @Length(3, 50)
@@ -46,7 +44,7 @@ export class CreateCreditPackDto {
     description: 'Display name of the credit pack',
     example: 'Pack Premium',
     minLength: 3,
-    maxLength: 100
+    maxLength: 100,
   })
   @IsString()
   @Length(3, 100)
@@ -56,7 +54,7 @@ export class CreateCreditPackDto {
     description: 'Detailed description of what the pack offers',
     example: 'Ideal para usuarios que buscan el máximo valor en créditos',
     minLength: 10,
-    maxLength: 500
+    maxLength: 500,
   })
   @IsString()
   @Length(10, 500)
@@ -65,7 +63,7 @@ export class CreateCreditPackDto {
   @ApiProperty({
     description: 'Number of credits included in the pack',
     example: 2500,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @IsPositive()
@@ -74,7 +72,7 @@ export class CreateCreditPackDto {
   @ApiProperty({
     description: 'Price of the pack in the specified currency',
     example: 19.99,
-    minimum: 0.01
+    minimum: 0.01,
   })
   @IsNumber()
   @Min(0.01)
@@ -83,7 +81,7 @@ export class CreateCreditPackDto {
   @ApiPropertyOptional({
     description: 'Whether this pack should be highlighted as popular',
     example: true,
-    default: false
+    default: false,
   })
   @IsOptional()
   @IsBoolean()
@@ -92,7 +90,7 @@ export class CreateCreditPackDto {
   @ApiProperty({
     description: 'Array of features/benefits included in this pack',
     example: ['Mejor relación precio-valor', 'Créditos bonus', 'Soporte prioritario'],
-    type: [String]
+    type: [String],
   })
   @IsArray()
   @ArrayMinSize(1)
@@ -102,7 +100,7 @@ export class CreateCreditPackDto {
   @ApiPropertyOptional({
     description: 'Whether the pack is currently active and purchasable',
     example: true,
-    default: true
+    default: true,
   })
   @IsOptional()
   @IsBoolean()
@@ -112,7 +110,7 @@ export class CreateCreditPackDto {
     description: 'Currency for the pack price',
     example: 'USD',
     enum: CreditPackCurrency,
-    default: 'USD'
+    default: 'USD',
   })
   @IsOptional()
   @IsEnum(CreditPackCurrency)
@@ -122,7 +120,7 @@ export class CreateCreditPackDto {
     description: 'Discount percentage applied to the pack',
     example: 25,
     minimum: 0,
-    maximum: 100
+    maximum: 100,
   })
   @IsOptional()
   @IsNumber()
@@ -133,7 +131,7 @@ export class CreateCreditPackDto {
   @ApiPropertyOptional({
     description: 'Original price before discount',
     example: 24.99,
-    minimum: 0.01
+    minimum: 0.01,
   })
   @IsOptional()
   @IsNumber()
@@ -143,7 +141,7 @@ export class CreateCreditPackDto {
   @ApiPropertyOptional({
     description: 'Additional bonus credits given with the pack',
     example: 500,
-    minimum: 0
+    minimum: 0,
   })
   @IsOptional()
   @IsNumber()
@@ -153,7 +151,7 @@ export class CreateCreditPackDto {
   @ApiPropertyOptional({
     description: 'Sort order for displaying packs (lower numbers appear first)',
     example: 1,
-    minimum: 0
+    minimum: 0,
   })
   @IsOptional()
   @IsNumber()
@@ -162,7 +160,7 @@ export class CreateCreditPackDto {
 
   @ApiPropertyOptional({
     description: 'Emoji to display with the pack',
-    example: '💎'
+    example: '💎',
   })
   @IsOptional()
   @IsString()
@@ -170,7 +168,7 @@ export class CreateCreditPackDto {
 
   @ApiPropertyOptional({
     description: 'Hex color code for pack theming',
-    example: '#FF5722'
+    example: '#FF5722',
   })
   @IsOptional()
   @IsString()
@@ -179,7 +177,7 @@ export class CreateCreditPackDto {
   @ApiPropertyOptional({
     description: 'Supported payment methods for this pack',
     example: ['stripe', 'paypal', 'mercadopago'],
-    type: [String]
+    type: [String],
   })
   @IsOptional()
   @IsArray()
@@ -190,7 +188,7 @@ export class CreateCreditPackDto {
     description: 'Expiration date for limited-time offers',
     example: '2024-12-31T23:59:59.000Z',
     type: 'string',
-    format: 'date-time'
+    format: 'date-time',
   })
   @IsOptional()
   @IsDateString()
@@ -199,7 +197,7 @@ export class CreateCreditPackDto {
   @ApiPropertyOptional({
     description: 'Whether this is a limited-time offer',
     example: false,
-    default: false
+    default: false,
   })
   @IsOptional()
   @IsBoolean()
@@ -208,7 +206,7 @@ export class CreateCreditPackDto {
   @ApiPropertyOptional({
     description: 'Category of the pack',
     example: 'premium',
-    enum: CreditPackCategory
+    enum: CreditPackCategory,
   })
   @IsOptional()
   @IsEnum(CreditPackCategory)
@@ -216,7 +214,7 @@ export class CreateCreditPackDto {
 
   @ApiPropertyOptional({
     description: 'Additional metadata for the pack',
-    example: { target_audience: 'power_users', promotion_id: 'SUMMER2024' }
+    example: { target_audience: 'power_users', promotion_id: 'SUMMER2024' },
   })
   @IsOptional()
   @IsObject()
@@ -226,7 +224,7 @@ export class CreateCreditPackDto {
 export class UpdateCreditPackDto {
   @ApiPropertyOptional({
     description: 'Display name of the credit pack',
-    example: 'Pack Premium Updated'
+    example: 'Pack Premium Updated',
   })
   @IsOptional()
   @IsString()
@@ -235,7 +233,7 @@ export class UpdateCreditPackDto {
 
   @ApiPropertyOptional({
     description: 'Detailed description of what the pack offers',
-    example: 'Updated description with new benefits'
+    example: 'Updated description with new benefits',
   })
   @IsOptional()
   @IsString()
@@ -244,7 +242,7 @@ export class UpdateCreditPackDto {
 
   @ApiPropertyOptional({
     description: 'Number of credits included in the pack',
-    example: 3000
+    example: 3000,
   })
   @IsOptional()
   @IsNumber()
@@ -253,7 +251,7 @@ export class UpdateCreditPackDto {
 
   @ApiPropertyOptional({
     description: 'Price of the pack in the specified currency',
-    example: 22.99
+    example: 22.99,
   })
   @IsOptional()
   @IsNumber()
@@ -262,7 +260,7 @@ export class UpdateCreditPackDto {
 
   @ApiPropertyOptional({
     description: 'Whether this pack should be highlighted as popular',
-    example: true
+    example: true,
   })
   @IsOptional()
   @IsBoolean()
@@ -270,7 +268,7 @@ export class UpdateCreditPackDto {
 
   @ApiPropertyOptional({
     description: 'Array of features/benefits included in this pack',
-    type: [String]
+    type: [String],
   })
   @IsOptional()
   @IsArray()
@@ -279,7 +277,7 @@ export class UpdateCreditPackDto {
 
   @ApiPropertyOptional({
     description: 'Whether the pack is currently active and purchasable',
-    example: true
+    example: true,
   })
   @IsOptional()
   @IsBoolean()
@@ -287,7 +285,7 @@ export class UpdateCreditPackDto {
 
   @ApiPropertyOptional({
     description: 'Additional bonus credits given with the pack',
-    example: 600
+    example: 600,
   })
   @IsOptional()
   @IsNumber()
@@ -296,7 +294,7 @@ export class UpdateCreditPackDto {
 
   @ApiPropertyOptional({
     description: 'Sort order for displaying packs',
-    example: 2
+    example: 2,
   })
   @IsOptional()
   @IsNumber()
@@ -307,92 +305,92 @@ export class UpdateCreditPackDto {
 export class CreditPackResponseDto {
   @ApiProperty({
     description: 'Unique identifier for the pack',
-    example: 'premium-pack-2024'
+    example: 'premium-pack-2024',
   })
   id: string;
 
   @ApiProperty({
     description: 'Display name of the credit pack',
-    example: 'Pack Premium'
+    example: 'Pack Premium',
   })
   title: string;
 
   @ApiProperty({
     description: 'Detailed description of what the pack offers',
-    example: 'Ideal para usuarios que buscan el máximo valor en créditos'
+    example: 'Ideal para usuarios que buscan el máximo valor en créditos',
   })
   description: string;
 
   @ApiProperty({
     description: 'Number of credits included in the pack',
-    example: 2500
+    example: 2500,
   })
   amount: number;
 
   @ApiProperty({
     description: 'Price of the pack in the specified currency',
-    example: 19.99
+    example: 19.99,
   })
   price: number;
 
   @ApiProperty({
     description: 'Whether this pack is highlighted as popular',
-    example: true
+    example: true,
   })
   popular: boolean;
 
   @ApiProperty({
     description: 'Array of features/benefits included in this pack',
     example: ['Mejor relación precio-valor', 'Créditos bonus', 'Soporte prioritario'],
-    type: [String]
+    type: [String],
   })
   features: string[];
 
   @ApiProperty({
     description: 'Currency for the pack price',
-    example: 'USD'
+    example: 'USD',
   })
   currency: string;
 
   @ApiPropertyOptional({
     description: 'Emoji to display with the pack',
-    example: '💎'
+    example: '💎',
   })
   emoji?: string;
 
   @ApiPropertyOptional({
     description: 'Hex color code for pack theming',
-    example: '#FF5722'
+    example: '#FF5722',
   })
   color?: string;
 
   @ApiPropertyOptional({
     description: 'Category of the pack',
-    example: 'premium'
+    example: 'premium',
   })
   category?: string;
 
   @ApiPropertyOptional({
     description: 'Additional bonus credits given with the pack',
-    example: 500
+    example: 500,
   })
   bonusCredits?: number;
 
   @ApiPropertyOptional({
     description: 'Discount percentage applied to the pack',
-    example: 25
+    example: 25,
   })
   discountPercentage?: number;
 
   @ApiPropertyOptional({
     description: 'Original price before discount',
-    example: 24.99
+    example: 24.99,
   })
   originalPrice?: number;
 
   @ApiPropertyOptional({
     description: 'Whether this is a limited-time offer',
-    example: false
+    example: false,
   })
   isLimitedOffer?: boolean;
 
@@ -400,20 +398,20 @@ export class CreditPackResponseDto {
     description: 'Expiration date for limited-time offers',
     example: '2024-12-31T23:59:59.000Z',
     type: 'string',
-    format: 'date-time'
+    format: 'date-time',
   })
   validUntil?: Date;
 
   @ApiPropertyOptional({
     description: 'Payment link for purchasing this pack',
-    example: '/api/payments/create-payment-link/premium-pack-2024'
+    example: '/api/payments/create-payment-link/premium-pack-2024',
   })
   paymentLink?: string;
 
   @ApiPropertyOptional({
     description: 'Supported payment methods for this pack',
     example: ['stripe', 'paypal', 'mercadopago'],
-    type: [String]
+    type: [String],
   })
   paymentMethods?: string[];
 }
@@ -421,43 +419,43 @@ export class CreditPackResponseDto {
 export class CreditPackStatsDto {
   @ApiProperty({
     description: 'Pack identifier',
-    example: 'premium-pack-2024'
+    example: 'premium-pack-2024',
   })
   packId: string;
 
   @ApiProperty({
     description: 'Pack title',
-    example: 'Pack Premium'
+    example: 'Pack Premium',
   })
   title: string;
 
   @ApiProperty({
     description: 'Total number of purchases',
-    example: 156
+    example: 156,
   })
   totalPurchases: number;
 
   @ApiProperty({
     description: 'Total revenue generated by this pack',
-    example: 3119.44
+    example: 3119.44,
   })
   totalRevenue: number;
 
   @ApiProperty({
     description: 'Average revenue per purchase',
-    example: 19.99
+    example: 19.99,
   })
   averageRevenuePerPurchase: number;
 
   @ApiProperty({
     description: 'Whether the pack is currently active',
-    example: true
+    example: true,
   })
   isActive: boolean;
 
   @ApiProperty({
     description: 'Whether the pack is marked as popular',
-    example: true
+    example: true,
   })
   popular: boolean;
 }
@@ -465,37 +463,37 @@ export class CreditPackStatsDto {
 export class GlobalStatsDto {
   @ApiProperty({
     description: 'Total number of credit packs',
-    example: 5
+    example: 5,
   })
   totalPacks: number;
 
   @ApiProperty({
     description: 'Number of currently active packs',
-    example: 4
+    example: 4,
   })
   activePacks: number;
 
   @ApiProperty({
     description: 'Total revenue from all packs',
-    example: 15847.32
+    example: 15847.32,
   })
   totalRevenue: number;
 
   @ApiProperty({
     description: 'Total number of purchases across all packs',
-    example: 892
+    example: 892,
   })
   totalPurchases: number;
 
   @ApiProperty({
     description: 'Average price across all packs',
-    example: 16.78
+    example: 16.78,
   })
   averagePackPrice: number;
 
   @ApiProperty({
     description: 'Average revenue per purchase across all packs',
-    example: 17.77
+    example: 17.77,
   })
   averageRevenuePerPurchase: number;
 }
@@ -503,7 +501,7 @@ export class GlobalStatsDto {
 export class ApiResponseDto<T = any> {
   @ApiProperty({
     description: 'Indicates if the request was successful',
-    example: true
+    example: true,
   })
   success: boolean;
 
@@ -514,19 +512,19 @@ export class ApiResponseDto<T = any> {
 
   @ApiProperty({
     description: 'Human-readable message describing the result',
-    example: 'Packs de créditos obtenidos exitosamente'
+    example: 'Packs de créditos obtenidos exitosamente',
   })
   message: string;
 
   @ApiPropertyOptional({
     description: 'Timestamp of the response',
-    example: '2024-01-15T10:30:00.000Z'
+    example: '2024-01-15T10:30:00.000Z',
   })
   timestamp?: string;
 
   @ApiPropertyOptional({
     description: 'Request path',
-    example: '/api/credit-packs'
+    example: '/api/credit-packs',
   })
   path?: string;
-} 
+}

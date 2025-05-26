@@ -31,7 +31,8 @@ async function bootstrap() {
   // Configuración de Swagger
   const config = new DocumentBuilder()
     .setTitle('Pumito Telegram Gaming Bot API')
-    .setDescription(`
+    .setDescription(
+      `
     ### Comprehensive API Documentation for Pumito Telegram Gaming Bot
     
     This API provides comprehensive endpoints for managing:
@@ -67,7 +68,8 @@ async function bootstrap() {
     
     #### Rate Limiting
     API calls are rate-limited to ensure fair usage and system stability.
-    `)
+    `,
+    )
     .setVersion('1.0.0')
     .setContact('Development Team', 'https://t.me/your_support_bot', 'support@yourgamingbot.com')
     .setLicense('Proprietary', 'https://yourdomain.com/license')

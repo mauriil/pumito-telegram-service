@@ -63,4 +63,4 @@ export class GameTemplate {
 }
 
 export type GameTemplateDocument = HydratedDocument<GameTemplate>;
-export const GameTemplateSchema = SchemaFactory.createForClass(GameTemplate); 
+export const GameTemplateSchema = SchemaFactory.createForClass(GameTemplate);

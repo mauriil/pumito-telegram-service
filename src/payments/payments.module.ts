@@ -15,16 +15,10 @@ import { TelegramModule } from '../telegram/telegram.module';
     SharedModule,
     HttpModule,
     forwardRef(() => TelegramModule),
-    MongooseModule.forFeature([
-      { name: Payment.name, schema: PaymentSchema }
-    ])
+    MongooseModule.forFeature([{ name: Payment.name, schema: PaymentSchema }]),
   ],
   controllers: [MercadoPagoController, PaymentsController],
-  providers: [
-    PaymentsService,
-    MercadoPagoService,
-    MercadoPagoDiagnosticsService,
-  ],
+  providers: [PaymentsService, MercadoPagoService, MercadoPagoDiagnosticsService],
   exports: [PaymentsService, MercadoPagoService, MercadoPagoDiagnosticsService],
 })
-export class PaymentsModule {} 
+export class PaymentsModule {}

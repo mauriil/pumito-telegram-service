@@ -6,4 +6,4 @@ import { GamesController } from './games.controller';
   imports: [DbModule],
   controllers: [GamesController],
 })
-export class GamesModule {} 
+export class GamesModule {}

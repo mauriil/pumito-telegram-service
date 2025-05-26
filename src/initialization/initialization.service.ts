@@ -13,17 +13,17 @@ export class InitializationService implements OnModuleInit {
 
   async onModuleInit() {
     this.logger.log('Iniciando configuración inicial de la aplicación...');
-    
+
     try {
       // Inicializar plantillas de juegos
       await this.gameTemplatesService.seedInitialGames();
-      
+
       // Inicializar packs de créditos
       await this.creditPacksService.seedInitialPacks();
-      
+
       this.logger.log('Configuración inicial completada exitosamente');
     } catch (error) {
       this.logger.error('Error durante la inicialización:', error);
     }
   }
-} 
+}

@@ -53,30 +53,35 @@ export class GameTemplatesService {
   }
 
   async findByCategory(category: string): Promise<GameTemplateDocument[]> {
-    return this.gameTemplateModel.find({ 
-      category, 
-      isActive: true 
-    }).sort({ name: 1 });
+    return this.gameTemplateModel
+      .find({
+        category,
+        isActive: true,
+      })
+      .sort({ name: 1 });
   }
 
   async findByDifficultyLevel(level: number): Promise<GameTemplateDocument[]> {
-    return this.gameTemplateModel.find({ 
-      difficultyLevel: level, 
-      isActive: true 
-    }).sort({ name: 1 });
+    return this.gameTemplateModel
+      .find({
+        difficultyLevel: level,
+        isActive: true,
+      })
+      .sort({ name: 1 });
   }
 
-  async updateGameTemplate(gameId: string, updateData: Partial<CreateGameTemplateDto>): Promise<GameTemplateDocument> {
-    const gameTemplate = await this.gameTemplateModel.findOneAndUpdate(
-      { gameId },
-      updateData,
-      { new: true }
-    );
-    
+  async updateGameTemplate(
+    gameId: string,
+    updateData: Partial<CreateGameTemplateDto>,
+  ): Promise<GameTemplateDocument> {
+    const gameTemplate = await this.gameTemplateModel.findOneAndUpdate({ gameId }, updateData, {
+      new: true,
+    });
+
     if (!gameTemplate) {
       throw new NotFoundException('Plantilla de juego no encontrada');
     }
-    
+
     return gameTemplate;
   }
 
@@ -96,9 +101,9 @@ export class GameTemplatesService {
       {
         $inc: {
           totalGamesPlayed: 1,
-          totalPlayersParticipated: playersCount
-        }
-      }
+          totalPlayersParticipated: playersCount,
+        },
+      },
     );
   }
 
@@ -113,21 +118,25 @@ export class GameTemplatesService {
       name: gameTemplate.name,
       totalGamesPlayed: gameTemplate.totalGamesPlayed,
       totalPlayersParticipated: gameTemplate.totalPlayersParticipated,
-      averagePlayersPerGame: gameTemplate.totalGamesPlayed > 0 ? 
-        (gameTemplate.totalPlayersParticipated / gameTemplate.totalGamesPlayed) : 0,
+      averagePlayersPerGame:
+        gameTemplate.totalGamesPlayed > 0
+          ? gameTemplate.totalPlayersParticipated / gameTemplate.totalGamesPlayed
+          : 0,
       isActive: gameTemplate.isActive,
     };
   }
 
   async searchGames(query: string): Promise<GameTemplateDocument[]> {
-    return this.gameTemplateModel.find({
-      isActive: true,
-      $or: [
-        { name: { $regex: query, $options: 'i' } },
-        { description: { $regex: query, $options: 'i' } },
-        { tags: { $in: [new RegExp(query, 'i')] } }
-      ]
-    }).sort({ name: 1 });
+    return this.gameTemplateModel
+      .find({
+        isActive: true,
+        $or: [
+          { name: { $regex: query, $options: 'i' } },
+          { description: { $regex: query, $options: 'i' } },
+          { tags: { $in: [new RegExp(query, 'i')] } },
+        ],
+      })
+      .sort({ name: 1 });
   }
 
   // Método para inicializar los juegos del frontend
@@ -152,7 +161,7 @@ export class GameTemplatesService {
         category: 'reflejos',
         difficultyLevel: 2,
         tags: ['reflejos', 'velocidad', 'competitivo'],
-        winRateMultiplier: 1.8
+        winRateMultiplier: 1.8,
       },
       {
         gameId: 'memory-cards',
@@ -167,7 +176,7 @@ export class GameTemplatesService {
         category: 'memoria',
         difficultyLevel: 3,
         tags: ['memoria', 'cartas', 'concentración'],
-        winRateMultiplier: 1.9
+        winRateMultiplier: 1.9,
       },
       {
         gameId: 'word-puzzle',
@@ -182,7 +191,7 @@ export class GameTemplatesService {
         category: 'lógica',
         difficultyLevel: 4,
         tags: ['palabras', 'lógica', 'vocabulario'],
-        winRateMultiplier: 1.8
+        winRateMultiplier: 1.8,
       },
       {
         gameId: 'color-match',
@@ -197,7 +206,7 @@ export class GameTemplatesService {
         category: 'percepción',
         difficultyLevel: 2,
         tags: ['colores', 'secuencia', 'visual'],
-        winRateMultiplier: 1.8
+        winRateMultiplier: 1.8,
       },
       {
         gameId: 'number-sequence',
@@ -212,7 +221,7 @@ export class GameTemplatesService {
         category: 'lógica',
         difficultyLevel: 3,
         tags: ['números', 'secuencia', 'matemáticas'],
-        winRateMultiplier: 1.9
+        winRateMultiplier: 1.9,
       },
       {
         gameId: 'trivia-challenge',
@@ -227,8 +236,8 @@ export class GameTemplatesService {
         category: 'conocimiento',
         difficultyLevel: 4,
         tags: ['trivia', 'conocimiento', 'cultura general'],
-        winRateMultiplier: 1.8
-      }
+        winRateMultiplier: 1.8,
+      },
     ];
 
     try {
@@ -238,4 +247,4 @@ export class GameTemplatesService {
       this.logger.error('Error creando juegos iniciales', error);
     }
   }
-} 
+}

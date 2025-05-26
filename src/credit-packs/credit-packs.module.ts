@@ -6,4 +6,4 @@ import { CreditPacksController } from './credit-packs.controller';
   imports: [DbModule],
   controllers: [CreditPacksController],
 })
-export class CreditPacksModule {} 
+export class CreditPacksModule {}

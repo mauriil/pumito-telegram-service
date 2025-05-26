@@ -29,7 +29,20 @@ import { CreditPacksService } from '../db/credit-packs.service';
       { name: CreditPack.name, schema: CreditPackSchema },
     ]),
   ],
-  providers: [UsersService, ConversationsService, GamesService, GameTemplatesService, CreditPacksService],
-  exports: [UsersService, ConversationsService, GamesService, GameTemplatesService, CreditPacksService, MongooseModule],
+  providers: [
+    UsersService,
+    ConversationsService,
+    GamesService,
+    GameTemplatesService,
+    CreditPacksService,
+  ],
+  exports: [
+    UsersService,
+    ConversationsService,
+    GamesService,
+    GameTemplatesService,
+    CreditPacksService,
+    MongooseModule,
+  ],
 })
-export class SharedModule {} 
+export class SharedModule {}

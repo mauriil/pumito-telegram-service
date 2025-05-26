@@ -7,13 +7,13 @@ export enum GameStatus {
   ABANDONED = 'abandoned',
   WON = 'won',
   LOST = 'lost',
-  DRAW = 'draw'
+  DRAW = 'draw',
 }
 
 export enum GameType {
   SINGLE_PLAYER = 'single_player',
   MULTIPLAYER = 'multiplayer',
-  TOURNAMENT = 'tournament'
+  TOURNAMENT = 'tournament',
 }
 
 @Schema({ timestamps: true })
@@ -74,4 +74,4 @@ export class Game {
 }
 
 export type GameDocument = HydratedDocument<Game>;
-export const GameSchema = SchemaFactory.createForClass(Game); 
+export const GameSchema = SchemaFactory.createForClass(Game);

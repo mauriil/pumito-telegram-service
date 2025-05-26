@@ -1,7 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Conversation, ConversationDocument, Message, MessageType } from './schemas/conversation.schema';
+import {
+  Conversation,
+  ConversationDocument,
+  Message,
+  MessageType,
+} from './schemas/conversation.schema';
 
 @Injectable()
 export class ConversationsService {
@@ -12,7 +17,12 @@ export class ConversationsService {
     private readonly conversationModel: Model<ConversationDocument>,
   ) {}
 
-  async addMessage(chatId: number, userId: string, content: string, type: MessageType): Promise<ConversationDocument> {
+  async addMessage(
+    chatId: number,
+    userId: string,
+    content: string,
+    type: MessageType,
+  ): Promise<ConversationDocument> {
     const message: Message = {
       type,
       content,
@@ -26,7 +36,10 @@ export class ConversationsService {
     );
   }
 
-  async getConversationHistory(chatId: number, userId: string): Promise<ConversationDocument | null> {
+  async getConversationHistory(
+    chatId: number,
+    userId: string,
+  ): Promise<ConversationDocument | null> {
     return this.conversationModel.findOne({ chatId, userId, isActive: true });
   }
 
@@ -35,9 +48,6 @@ export class ConversationsService {
   }
 
   async deactivateConversation(chatId: number, userId: string): Promise<void> {
-    await this.conversationModel.updateOne(
-      { chatId, userId, isActive: true },
-      { isActive: false },
-    );
+    await this.conversationModel.updateOne({ chatId, userId, isActive: true }, { isActive: false });
   }
-} 
+}

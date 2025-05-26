@@ -4,7 +4,6 @@ import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { UsersService } from '../../db/users.service';
 import { PaymentsService } from '../../db/payments.service';
 import { CreditPacksService } from '../../db/credit-packs.service';
-import { PaymentDocument } from '../../db/schemas/payment.schema';
 
 @Injectable()
 @Update()
@@ -24,7 +23,7 @@ export class PurchaseFlow {
       if (ctx.message) {
         await ctx.deleteMessage(ctx.message.message_id);
       }
-      
+
       // Borrar el último mensaje del bot si existe
       if (ctx.callbackQuery?.message) {
         await ctx.deleteMessage(ctx.callbackQuery.message.message_id);
@@ -53,7 +52,7 @@ export class PurchaseFlow {
 
       switch (status) {
         case 'confirmed':
-          message = 
+          message =
             `✅ <b>¡Pago Confirmado!</b>\n\n` +
             `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: ${pack.price} USDT\n` +
@@ -62,7 +61,7 @@ export class PurchaseFlow {
           break;
 
         case 'expired':
-          message = 
+          message =
             `⏱️ <b>Pago Expirado</b>\n\n` +
             `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: ${pack.price} USDT\n` +
@@ -70,12 +69,12 @@ export class PurchaseFlow {
             `El tiempo para realizar el pago ha expirado.\n` +
             `Puedes generar un nuevo enlace de pago usando el comando /buy`;
           keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback('🛍️ Realizar nueva compra', 'new_purchase')]
+            [Markup.button.callback('🛍️ Realizar nueva compra', 'new_purchase')],
           ]);
           break;
 
         case 'cancelled':
-          message = 
+          message =
             `❌ <b>Pago Cancelado</b>\n\n` +
             `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: ${pack.price} USDT\n` +
@@ -83,13 +82,13 @@ export class PurchaseFlow {
             `Has cancelado el pago.\n` +
             `Puedes generar un nuevo enlace de pago usando el comando /buy`;
           keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback('🛍️ Realizar nueva compra', 'new_purchase')]
+            [Markup.button.callback('🛍️ Realizar nueva compra', 'new_purchase')],
           ]);
           break;
 
         case 'rejected':
         case 'error':
-          message = 
+          message =
             `❌ <b>Error en el Pago</b>\n\n` +
             `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: ${pack.price} USDT\n` +
@@ -97,7 +96,7 @@ export class PurchaseFlow {
             `Hubo un problema al procesar tu pago.\n` +
             `Puedes intentar nuevamente usando el comando /buy`;
           keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback('🛍️ Intentar nuevamente', 'new_purchase')]
+            [Markup.button.callback('🛍️ Intentar nuevamente', 'new_purchase')],
           ]);
           break;
       }
@@ -105,7 +104,7 @@ export class PurchaseFlow {
       if (message) {
         await ctx.editMessageText(message, {
           parse_mode: 'HTML',
-          ...(keyboard ? keyboard : {})
+          ...(keyboard ? keyboard : {}),
         });
       }
     } catch (error) {
@@ -134,7 +133,7 @@ export class PurchaseFlow {
       const loadingMsg = await ctx.reply('🔎 Buscando ofertas y promociones especiales... 🛍️✨');
 
       const user = await this.users.upsertFromContext(ctx);
-      
+
       // Verificar si el usuario puede hacer compras
       const canPurchase = await this.users.canMakePurchase(user.id);
       if (!canPurchase.can) {
@@ -150,7 +149,9 @@ export class PurchaseFlow {
       const packs = await this.creditPacksService.findActivePacks();
 
       if (packs.length === 0) {
-        await ctx.reply('😔 No hay packs disponibles en este momento. Por favor, intenta más tarde.');
+        await ctx.reply(
+          '😔 No hay packs disponibles en este momento. Por favor, intenta más tarde.',
+        );
         if (loadingMsg && loadingMsg.message_id) {
           await ctx.deleteMessage(loadingMsg.message_id);
         }
@@ -160,31 +161,26 @@ export class PurchaseFlow {
       // Generar los links de pago para cada pack
       const keyboard = [];
       for (const pack of packs) {
-        const packForPayment = {
-          id: pack.packId,
-          name: pack.title,
-          price: pack.price,
-          credits: pack.amount,
-          description: pack.description
-        };
-        const url = await this.pay.createInvoice(user.id, packForPayment, 'mercadopago');
-        
         // Formato del botón con emoji y información clave usando callback
         const buttonText = `${pack.emoji || '💎'} ${pack.title} - $${pack.price}`;
         keyboard.push([Markup.button.callback(buttonText, `pack_${pack.packId}`)]);
       }
 
       // Mensaje final
-      const packsText = packs.map(p => {
-        const bonusText = p.bonusCredits > 0 ? ` +${p.bonusCredits} bonus` : '';
-        const discountText = p.discountPercentage > 0 ? ` (${p.discountPercentage}% OFF)` : '';
-        return `${p.emoji || '💎'} <b>${p.title}</b>${discountText}\n` +
-               `💰 Precio: $${p.price} ${p.currency}\n` +
-               `🎫 Créditos: ${p.amount}${bonusText}\n` +
-               `📝 ${p.description}\n`;
-      }).join('\n');
+      const packsText = packs
+        .map(p => {
+          const bonusText = p.bonusCredits > 0 ? ` +${p.bonusCredits} bonus` : '';
+          const discountText = p.discountPercentage > 0 ? ` (${p.discountPercentage}% OFF)` : '';
+          return (
+            `${p.emoji || '💎'} <b>${p.title}</b>${discountText}\n` +
+            `💰 Precio: $${p.price} ${p.currency}\n` +
+            `🎫 Créditos: ${p.amount}${bonusText}\n` +
+            `📝 ${p.description}\n`
+          );
+        })
+        .join('\n');
 
-      const message = 
+      const message =
         `💰 <b>Tu Balance Actual</b>\n` +
         `Balance: ${user.balance} USDT\n` +
         `Créditos: ${user.credits}\n\n` +
@@ -200,7 +196,7 @@ export class PurchaseFlow {
       // 4. Enviar el mensaje final
       await ctx.reply(message, {
         parse_mode: 'HTML',
-        ...Markup.inlineKeyboard(keyboard)
+        ...Markup.inlineKeyboard(keyboard),
       });
     } catch (error) {
       this.logger.error(`Error in buy command: ${error.message}`, error.stack);
@@ -213,7 +209,7 @@ export class PurchaseFlow {
     try {
       const packId = ctx.match[1];
       const pack = await this.creditPacksService.findByPackId(packId);
-      
+
       if (!pack || !pack.isActive) {
         this.logger.warn(`Invalid or inactive pack ID requested: ${packId}`);
         await ctx.reply('❌ Pack inválido o no disponible. Por favor, selecciona un pack válido.');
@@ -222,7 +218,7 @@ export class PurchaseFlow {
       }
 
       const user = await this.users.upsertFromContext(ctx);
-      
+
       if (!user) {
         this.logger.error('Failed to create/update user from context');
         await ctx.reply('❌ Error al procesar tu solicitud. Por favor, intenta nuevamente.');
@@ -246,22 +242,22 @@ export class PurchaseFlow {
         // Usar balance existente
         await this.users.addBalance(user.id, -pack.price);
         await this.users.addCredits(user.id, totalCredits);
-        
+
         // Incrementar estadísticas del pack
         await this.creditPacksService.incrementPurchaseStats(packId, pack.price);
-        
+
         await this.deleteLastMessages(ctx);
-        
+
         const bonusText = pack.bonusCredits > 0 ? ` (+${pack.bonusCredits} bonus)` : '';
         await ctx.reply(
           `✅ <b>Compra Exitosa</b>\n\n` +
-          `🛍️ Pack: ${pack.title}\n` +
-          `💰 Precio: $${pack.price} ${pack.currency}\n` +
-          `🎫 Créditos añadidos: ${totalCredits}${bonusText}\n` +
-          `💳 Balance restante: ${user.balance - pack.price} USDT`,
-          { parse_mode: 'HTML' }
+            `🛍️ Pack: ${pack.title}\n` +
+            `💰 Precio: $${pack.price} ${pack.currency}\n` +
+            `🎫 Créditos añadidos: ${totalCredits}${bonusText}\n` +
+            `💳 Balance restante: ${user.balance - pack.price} USDT`,
+          { parse_mode: 'HTML' },
         );
-        
+
         await ctx.answerCbQuery('✅ Compra completada con balance existente');
         return;
       }
@@ -277,8 +273,9 @@ export class PurchaseFlow {
           return;
         }
 
-        const pendingBonusText = pendingPack.bonusCredits > 0 ? ` (+${pendingPack.bonusCredits} bonus)` : '';
-        const message = 
+        const pendingBonusText =
+          pendingPack.bonusCredits > 0 ? ` (+${pendingPack.bonusCredits} bonus)` : '';
+        const message =
           `⚠️ <b>Pago Pendiente</b>\n\n` +
           `🛍️ Pack: ${pendingPack.title}\n` +
           `💰 Precio: $${pendingPack.price} ${pendingPack.currency}\n` +
@@ -290,12 +287,12 @@ export class PurchaseFlow {
         const keyboard = Markup.inlineKeyboard([
           [Markup.button.url('💳 Continuar con Mercado Pago', pendingPayment.invoiceUrl)],
           [Markup.button.callback('❌ Cancelar pago', 'cancel_payment')],
-          [Markup.button.callback('🛍️ Iniciar nueva compra', 'new_purchase')]
+          [Markup.button.callback('🛍️ Iniciar nueva compra', 'new_purchase')],
         ]);
 
         await ctx.reply(message, {
           parse_mode: 'HTML',
-          ...keyboard
+          ...keyboard,
         });
         await ctx.answerCbQuery('Pago pendiente existente');
         return;
@@ -307,29 +304,37 @@ export class PurchaseFlow {
         name: pack.title,
         price: pack.price,
         credits: totalCredits,
-        description: pack.description
+        description: pack.description,
       };
 
       const paymentMethods = [
-        { name: '💳 Mercado Pago', url: await this.pay.createInvoice(user.id, packForPayment, 'mercadopago') }
+        {
+          name: '💳 Mercado Pago',
+          url: await this.pay.createInvoice(user.id, packForPayment, 'mercadopago'),
+        },
       ];
 
       const validPaymentMethods = paymentMethods.filter(method => method.url);
 
       if (validPaymentMethods.length === 0) {
-        this.logger.error(`Failed to create payment methods for user ${user.id} and pack ${packId}`);
+        this.logger.error(
+          `Failed to create payment methods for user ${user.id} and pack ${packId}`,
+        );
         await ctx.reply('❌ Error al generar el método de pago. Por favor, intenta nuevamente.');
         await ctx.answerCbQuery('Error al generar pago');
         return;
       }
 
       await this.deleteLastMessages(ctx);
-      
+
       const bonusText = pack.bonusCredits > 0 ? ` (+${pack.bonusCredits} bonus)` : '';
-      const discountText = pack.discountPercentage > 0 ? `\n💸 <b>Descuento: ${pack.discountPercentage}%</b>` : '';
-      const originalPriceText = pack.originalPrice ? `\n~~Precio original: $${pack.originalPrice}~~` : '';
-      
-      const message = 
+      const discountText =
+        pack.discountPercentage > 0 ? `\n💸 <b>Descuento: ${pack.discountPercentage}%</b>` : '';
+      const originalPriceText = pack.originalPrice
+        ? `\n~~Precio original: $${pack.originalPrice}~~`
+        : '';
+
+      const message =
         `🛍️ <b>${pack.title}</b> ${pack.emoji || '💎'}\n\n` +
         `💰 Precio: $${pack.price} ${pack.currency}${originalPriceText}${discountText}\n` +
         `🎫 Créditos: ${totalCredits}${bonusText}\n` +
@@ -339,24 +344,25 @@ export class PurchaseFlow {
         `⏱️ El enlace expirará en 30 minutos.`;
 
       const keyboard = Markup.inlineKeyboard([
-        ...validPaymentMethods.map(method => [
-          Markup.button.url(method.name, method.url)
-        ]),
-        [Markup.button.callback('❌ Cancelar pago', 'cancel_payment')]
+        ...validPaymentMethods.map(method => [Markup.button.url(method.name, method.url)]),
+        [Markup.button.callback('❌ Cancelar pago', 'cancel_payment')],
       ]);
 
       const sentMessage = await ctx.reply(message, {
         parse_mode: 'HTML',
-        ...keyboard
+        ...keyboard,
       });
-      
+
       // Guardar el ID del mensaje para futuras actualizaciones
       // Necesitamos obtener el pago recién creado
       const currentPayment = await this.pay.getPendingPayment(user.id);
       if (sentMessage && currentPayment) {
-        await this.pay.updatePaymentMessageId(currentPayment._id.toString(), sentMessage.message_id);
+        await this.pay.updatePaymentMessageId(
+          currentPayment._id.toString(),
+          sentMessage.message_id,
+        );
       }
-      
+
       await ctx.answerCbQuery('✅ Métodos de pago generados');
     } catch (error) {
       this.logger.error(`Error in purchase flow: ${error.message}`, error.stack);

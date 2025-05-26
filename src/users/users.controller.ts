@@ -1,32 +1,32 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Put, 
-  Param, 
-  Body, 
-  Query, 
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Param,
+  Body,
+  Query,
   NotFoundException,
   HttpStatus,
   HttpCode,
   ParseIntPipe,
-  BadRequestException 
+  BadRequestException,
 } from '@nestjs/common';
-import { 
-  ApiTags, 
-  ApiOperation, 
-  ApiResponse, 
-  ApiParam, 
-  ApiQuery, 
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
   ApiBody,
   ApiBearerAuth,
   ApiExtraModels,
-  getSchemaPath
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { UsersService } from '../db/users.service';
-import { GamesService, CreateGameDto as ServiceCreateGameDto, UpdateGameDto } from '../db/games.service';
+import { GamesService, CreateGameDto as ServiceCreateGameDto } from '../db/games.service';
 import { GameType, GameStatus } from '../db/schemas/game.schema';
-import { 
+import {
   CreateUserDto,
   UpdateUserDto,
   UserResponseDto,
@@ -36,7 +36,7 @@ import {
   BalanceUpdateDto,
   CreditsUpdateDto,
   UserStatus,
-  ApiResponseDto
+  ApiResponseDto,
 } from './dto/user.dto';
 
 @ApiTags('Users')
@@ -54,14 +54,20 @@ export class UsersController {
       telegramId: user.telegramId,
       firstName: user.firstName,
       lastName: user.lastName,
-      fullName: user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName || user.lastName,
+      fullName:
+        user.firstName && user.lastName
+          ? `${user.firstName} ${user.lastName}`
+          : user.firstName || user.lastName,
       username: user.username,
       balance: user.balance,
       credits: user.credits,
-      status: user.status as UserStatus || UserStatus.ACTIVE,
+      status: (user.status as UserStatus) || UserStatus.ACTIVE,
       totalGamesPlayed: user.gameStats?.totalGames || 0,
       totalGamesWon: user.gameStats?.gamesWon || 0,
-      winRate: (user.gameStats?.totalGames || 0) > 0 ? ((user.gameStats?.gamesWon || 0) / user.gameStats.totalGames) * 100 : 0,
+      winRate:
+        (user.gameStats?.totalGames || 0) > 0
+          ? ((user.gameStats?.gamesWon || 0) / user.gameStats.totalGames) * 100
+          : 0,
       totalPurchases: user.totalPurchases || 0,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
@@ -91,14 +97,20 @@ export class UsersController {
     return {
       userId: user._id.toString(),
       telegramId: user.telegramId,
-      displayName: user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName || user.username || `User ${user.telegramId}`,
+      displayName:
+        user.firstName && user.lastName
+          ? `${user.firstName} ${user.lastName}`
+          : user.firstName || user.username || `User ${user.telegramId}`,
       balance: user.balance,
       credits: user.credits,
       totalGamesPlayed: user.gameStats?.totalGames || 0,
       totalGamesWon: user.gameStats?.gamesWon || 0,
-      winRate: (user.gameStats?.totalGames || 0) > 0 ? ((user.gameStats?.gamesWon || 0) / user.gameStats.totalGames) * 100 : 0,
+      winRate:
+        (user.gameStats?.totalGames || 0) > 0
+          ? ((user.gameStats?.gamesWon || 0) / user.gameStats.totalGames) * 100
+          : 0,
       totalPurchases: user.totalPurchases || 0,
-      status: user.status as UserStatus || UserStatus.ACTIVE,
+      status: (user.status as UserStatus) || UserStatus.ACTIVE,
       lastActivityAt: user.lastLoginAt || user.updatedAt,
     };
   }
@@ -126,27 +138,27 @@ export class UsersController {
     required: false,
     description: 'Filter users by status',
     enum: UserStatus,
-    example: 'active'
+    example: 'active',
   })
   @ApiQuery({
     name: 'search',
     required: false,
     description: 'Search users by name or username',
-    example: 'juan'
+    example: 'juan',
   })
   @ApiQuery({
     name: 'limit',
     required: false,
     description: 'Number of users to return (max 100)',
     example: 20,
-    type: Number
+    type: Number,
   })
   @ApiQuery({
     name: 'offset',
     required: false,
     description: 'Number of users to skip',
     example: 0,
-    type: Number
+    type: Number,
   })
   @ApiResponse({
     status: 200,
@@ -161,17 +173,17 @@ export class UsersController {
               properties: {
                 users: {
                   type: 'array',
-                  items: { $ref: getSchemaPath(UserResponseDto) }
+                  items: { $ref: getSchemaPath(UserResponseDto) },
                 },
                 total: { type: 'number', example: 156 },
                 limit: { type: 'number', example: 20 },
-                offset: { type: 'number', example: 0 }
-              }
-            }
-          }
-        }
-      ]
-    }
+                offset: { type: 'number', example: 0 },
+              },
+            },
+          },
+        },
+      ],
+    },
   })
   async getAllUsers(
     @Query('status') status?: string,
@@ -181,7 +193,7 @@ export class UsersController {
   ): Promise<ApiResponseDto<any>> {
     // TODO: Implement findAll method in UsersService
     const users: any[] = await this.usersService.findAll(limit, offset, status, search);
-    
+
     // Transform users to response format
     const transformedUsers = users.map(user => this.transformUserToResponse(user));
 
@@ -191,11 +203,11 @@ export class UsersController {
         users: transformedUsers,
         total: transformedUsers.length,
         limit: Number(limit),
-        offset: Number(offset)
+        offset: Number(offset),
       },
       message: 'Usuarios obtenidos exitosamente',
       timestamp: new Date().toISOString(),
-      path: '/api/users'
+      path: '/api/users',
     };
   }
 
@@ -216,7 +228,7 @@ export class UsersController {
     name: 'telegramId',
     description: 'Telegram user ID',
     example: 123456789,
-    type: Number
+    type: Number,
   })
   @ApiResponse({
     status: 200,
@@ -226,11 +238,11 @@ export class UsersController {
         { $ref: getSchemaPath(ApiResponseDto) },
         {
           properties: {
-            data: { $ref: getSchemaPath(UserResponseDto) }
-          }
-        }
-      ]
-    }
+            data: { $ref: getSchemaPath(UserResponseDto) },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 404,
@@ -242,13 +254,15 @@ export class UsersController {
           properties: {
             success: { example: false },
             message: { example: 'Usuario no encontrado' },
-            data: { example: null }
-          }
-        }
-      ]
-    }
+            data: { example: null },
+          },
+        },
+      ],
+    },
   })
-  async getUserByTelegramId(@Param('telegramId', ParseIntPipe) telegramId: number): Promise<ApiResponseDto<UserResponseDto>> {
+  async getUserByTelegramId(
+    @Param('telegramId', ParseIntPipe) telegramId: number,
+  ): Promise<ApiResponseDto<UserResponseDto>> {
     const user = await this.usersService.findByTelegramId(telegramId);
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
@@ -261,7 +275,7 @@ export class UsersController {
       data: userResponse,
       message: 'Usuario obtenido exitosamente',
       timestamp: new Date().toISOString(),
-      path: `/api/users/${telegramId}`
+      path: `/api/users/${telegramId}`,
     };
   }
 
@@ -296,16 +310,16 @@ export class UsersController {
           firstName: 'Juan',
           lastName: 'Pérez',
           username: 'juanperez',
-          email: 'juan@example.com'
-        }
+          email: 'juan@example.com',
+        },
       },
       'Minimal User': {
         summary: 'Minimal required data',
         value: {
-          telegramId: 987654321
-        }
-      }
-    }
+          telegramId: 987654321,
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 201,
@@ -315,11 +329,11 @@ export class UsersController {
         { $ref: getSchemaPath(ApiResponseDto) },
         {
           properties: {
-            data: { $ref: getSchemaPath(UserResponseDto) }
-          }
-        }
-      ]
-    }
+            data: { $ref: getSchemaPath(UserResponseDto) },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 400,
@@ -331,14 +345,16 @@ export class UsersController {
           properties: {
             success: { example: false },
             message: { example: 'Ya existe un usuario con este Telegram ID' },
-            data: { example: null }
-          }
-        }
-      ]
-    }
+            data: { example: null },
+          },
+        },
+      ],
+    },
   })
   @HttpCode(HttpStatus.CREATED)
-  async createUser(@Body() createUserData: CreateUserDto): Promise<ApiResponseDto<UserResponseDto>> {
+  async createUser(
+    @Body() createUserData: CreateUserDto,
+  ): Promise<ApiResponseDto<UserResponseDto>> {
     try {
       // Crear un contexto simulado para usar upsertFromContext
       const mockContext = {
@@ -346,11 +362,11 @@ export class UsersController {
           id: createUserData.telegramId,
           username: createUserData.username,
           first_name: createUserData.firstName,
-        }
+        },
       } as any;
-      
+
       const user = await this.usersService.upsertFromContext(mockContext);
-      
+
       const userResponse = this.transformUserToResponse(user);
 
       return {
@@ -358,7 +374,7 @@ export class UsersController {
         data: userResponse,
         message: 'Usuario creado exitosamente',
         timestamp: new Date().toISOString(),
-        path: '/api/users'
+        path: '/api/users',
       };
     } catch (error: any) {
       if (error.code === 11000) {
@@ -387,7 +403,7 @@ export class UsersController {
     name: 'telegramId',
     description: 'Telegram user ID',
     example: 123456789,
-    type: Number
+    type: Number,
   })
   @ApiBody({
     type: UpdateUserDto,
@@ -398,16 +414,16 @@ export class UsersController {
         value: {
           firstName: 'Juan Carlos',
           lastName: 'Pérez García',
-          email: 'juan.carlos@example.com'
-        }
+          email: 'juan.carlos@example.com',
+        },
       },
       'Update Status': {
         summary: 'Change user status',
         value: {
-          status: 'suspended'
-        }
-      }
-    }
+          status: 'suspended',
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 200,
@@ -417,31 +433,31 @@ export class UsersController {
         { $ref: getSchemaPath(ApiResponseDto) },
         {
           properties: {
-            data: { $ref: getSchemaPath(UserResponseDto) }
-          }
-        }
-      ]
-    }
+            data: { $ref: getSchemaPath(UserResponseDto) },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 404,
-    description: 'User not found'
+    description: 'User not found',
   })
   async updateUser(
     @Param('telegramId', ParseIntPipe) telegramId: number,
-    @Body() updateData: UpdateUserDto
+    @Body() updateData: UpdateUserDto,
   ): Promise<ApiResponseDto<UserResponseDto>> {
     const user = await this.usersService.findByTelegramId(telegramId);
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
     }
-    
+
     // Actualizar campos permitidos
     if (updateData.firstName !== undefined) user.firstName = updateData.firstName;
     if (updateData.lastName !== undefined) user.lastName = updateData.lastName;
     if (updateData.username !== undefined) user.username = updateData.username;
     if (updateData.status !== undefined) user.status = updateData.status as any;
-    
+
     const updatedUser = await user.save();
 
     const userResponse = this.transformUserToResponse(updatedUser);
@@ -451,7 +467,7 @@ export class UsersController {
       data: userResponse,
       message: 'Usuario actualizado exitosamente',
       timestamp: new Date().toISOString(),
-      path: `/api/users/${telegramId}`
+      path: `/api/users/${telegramId}`,
     };
   }
 
@@ -476,7 +492,7 @@ export class UsersController {
     name: 'telegramId',
     description: 'Telegram user ID',
     example: 123456789,
-    type: Number
+    type: Number,
   })
   @ApiBody({
     type: BalanceUpdateDto,
@@ -485,18 +501,18 @@ export class UsersController {
       'Add Balance': {
         summary: 'Add funds to balance',
         value: {
-          amount: 25.50,
-          reason: 'Purchase refund'
-        }
+          amount: 25.5,
+          reason: 'Purchase refund',
+        },
       },
       'Subtract Balance': {
         summary: 'Deduct from balance',
         value: {
-          amount: -10.00,
-          reason: 'Penalty for violation'
-        }
-      }
-    }
+          amount: -10.0,
+          reason: 'Penalty for violation',
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 200,
@@ -509,28 +525,28 @@ export class UsersController {
             data: {
               type: 'object',
               properties: {
-                newBalance: { type: 'number', example: 35.50 },
-                previousBalance: { type: 'number', example: 10.00 },
-                changeAmount: { type: 'number', example: 25.50 },
-                reason: { type: 'string', example: 'Purchase refund' }
-              }
-            }
-          }
-        }
-      ]
-    }
+                newBalance: { type: 'number', example: 35.5 },
+                previousBalance: { type: 'number', example: 10.0 },
+                changeAmount: { type: 'number', example: 25.5 },
+                reason: { type: 'string', example: 'Purchase refund' },
+              },
+            },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 400,
-    description: 'Insufficient balance for negative amounts'
+    description: 'Insufficient balance for negative amounts',
   })
   @ApiResponse({
     status: 404,
-    description: 'User not found'
+    description: 'User not found',
   })
   async updateBalance(
     @Param('telegramId', ParseIntPipe) telegramId: number,
-    @Body() balanceUpdate: BalanceUpdateDto
+    @Body() balanceUpdate: BalanceUpdateDto,
   ): Promise<ApiResponseDto<any>> {
     const user = await this.usersService.findByTelegramId(telegramId);
     if (!user) {
@@ -538,7 +554,7 @@ export class UsersController {
     }
 
     const previousBalance = user.balance;
-    
+
     // Check for insufficient balance if trying to subtract
     if (balanceUpdate.amount < 0 && Math.abs(balanceUpdate.amount) > user.balance) {
       throw new BadRequestException('Saldo insuficiente');
@@ -553,11 +569,11 @@ export class UsersController {
         newBalance,
         previousBalance,
         changeAmount: balanceUpdate.amount,
-        reason: balanceUpdate.reason || 'Manual balance adjustment'
+        reason: balanceUpdate.reason || 'Manual balance adjustment',
       },
       message: 'Balance actualizado exitosamente',
       timestamp: new Date().toISOString(),
-      path: `/api/users/${telegramId}/balance`
+      path: `/api/users/${telegramId}/balance`,
     };
   }
 
@@ -582,7 +598,7 @@ export class UsersController {
     name: 'telegramId',
     description: 'Telegram user ID',
     example: 123456789,
-    type: Number
+    type: Number,
   })
   @ApiBody({
     type: CreditsUpdateDto,
@@ -592,17 +608,17 @@ export class UsersController {
         summary: 'Award credits',
         value: {
           amount: 500,
-          reason: 'Daily login bonus'
-        }
+          reason: 'Daily login bonus',
+        },
       },
       'Subtract Credits': {
         summary: 'Deduct credits',
         value: {
           amount: -100,
-          reason: 'Game penalty'
-        }
-      }
-    }
+          reason: 'Game penalty',
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 200,
@@ -618,25 +634,25 @@ export class UsersController {
                 newCredits: { type: 'number', example: 2500 },
                 previousCredits: { type: 'number', example: 2000 },
                 changeAmount: { type: 'number', example: 500 },
-                reason: { type: 'string', example: 'Daily login bonus' }
-              }
-            }
-          }
-        }
-      ]
-    }
+                reason: { type: 'string', example: 'Daily login bonus' },
+              },
+            },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 400,
-    description: 'Insufficient credits for negative amounts'
+    description: 'Insufficient credits for negative amounts',
   })
   @ApiResponse({
     status: 404,
-    description: 'User not found'
+    description: 'User not found',
   })
   async updateCredits(
     @Param('telegramId', ParseIntPipe) telegramId: number,
-    @Body() creditsUpdate: CreditsUpdateDto
+    @Body() creditsUpdate: CreditsUpdateDto,
   ): Promise<ApiResponseDto<any>> {
     const user = await this.usersService.findByTelegramId(telegramId);
     if (!user) {
@@ -644,7 +660,7 @@ export class UsersController {
     }
 
     const previousCredits = user.credits;
-    
+
     // Check for insufficient credits if trying to subtract
     if (creditsUpdate.amount < 0 && Math.abs(creditsUpdate.amount) > user.credits) {
       throw new BadRequestException('Créditos insuficientes');
@@ -659,11 +675,11 @@ export class UsersController {
         newCredits,
         previousCredits,
         changeAmount: creditsUpdate.amount,
-        reason: creditsUpdate.reason || 'Manual credits adjustment'
+        reason: creditsUpdate.reason || 'Manual credits adjustment',
       },
       message: 'Créditos actualizados exitosamente',
       timestamp: new Date().toISOString(),
-      path: `/api/users/${telegramId}/credits`
+      path: `/api/users/${telegramId}/credits`,
     };
   }
 
@@ -684,28 +700,28 @@ export class UsersController {
     name: 'telegramId',
     description: 'Telegram user ID',
     example: 123456789,
-    type: Number
+    type: Number,
   })
   @ApiQuery({
     name: 'status',
     required: false,
     description: 'Filter games by status',
     enum: GameStatus,
-    example: 'completed'
+    example: 'completed',
   })
   @ApiQuery({
     name: 'gameType',
     required: false,
     description: 'Filter games by type',
     enum: GameType,
-    example: 'tap-reaction'
+    example: 'tap-reaction',
   })
   @ApiQuery({
     name: 'limit',
     required: false,
     description: 'Number of games to return',
     example: 10,
-    type: Number
+    type: Number,
   })
   @ApiResponse({
     status: 200,
@@ -717,16 +733,16 @@ export class UsersController {
           properties: {
             data: {
               type: 'array',
-              items: { $ref: getSchemaPath(GameResponseDto) }
-            }
-          }
-        }
-      ]
-    }
+              items: { $ref: getSchemaPath(GameResponseDto) },
+            },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 404,
-    description: 'User not found'
+    description: 'User not found',
   })
   async getUserGames(
     @Param('telegramId', ParseIntPipe) telegramId: number,
@@ -740,7 +756,7 @@ export class UsersController {
     }
 
     const games = await this.gamesService.getGamesByPlayer(telegramId, limit);
-    
+
     const transformedGames = games.map(game => this.transformGameToResponse(game));
 
     return {
@@ -748,7 +764,7 @@ export class UsersController {
       data: transformedGames,
       message: 'Juegos del usuario obtenidos exitosamente',
       timestamp: new Date().toISOString(),
-      path: `/api/users/${telegramId}/games`
+      path: `/api/users/${telegramId}/games`,
     };
   }
 
@@ -775,7 +791,7 @@ export class UsersController {
     name: 'telegramId',
     description: 'Telegram user ID',
     example: 123456789,
-    type: Number
+    type: Number,
   })
   @ApiBody({
     type: CreateGameDto,
@@ -787,8 +803,8 @@ export class UsersController {
           gameId: 'tap-reaction',
           gameType: 'tap-reaction',
           creditsWagered: 50,
-          isRanked: true
-        }
+          isRanked: true,
+        },
       },
       'Multiplayer Game': {
         summary: 'Create multiplayer game',
@@ -797,10 +813,10 @@ export class UsersController {
           opponentTelegramId: 987654321,
           gameType: 'tap-reaction',
           creditsWagered: 100,
-          isRanked: true
-        }
-      }
-    }
+          isRanked: true,
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 201,
@@ -810,24 +826,24 @@ export class UsersController {
         { $ref: getSchemaPath(ApiResponseDto) },
         {
           properties: {
-            data: { $ref: getSchemaPath(GameResponseDto) }
-          }
-        }
-      ]
-    }
+            data: { $ref: getSchemaPath(GameResponseDto) },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 400,
-    description: 'Insufficient credits or invalid game data'
+    description: 'Insufficient credits or invalid game data',
   })
   @ApiResponse({
     status: 404,
-    description: 'User not found'
+    description: 'User not found',
   })
   @HttpCode(HttpStatus.CREATED)
   async createGame(
     @Param('telegramId', ParseIntPipe) telegramId: number,
-    @Body() createGameData: CreateGameDto
+    @Body() createGameData: CreateGameDto,
   ): Promise<ApiResponseDto<GameResponseDto>> {
     const user = await this.usersService.findByTelegramId(telegramId);
     if (!user) {
@@ -839,7 +855,7 @@ export class UsersController {
       if (user.credits < createGameData.creditsWagered) {
         throw new BadRequestException('Créditos insuficientes');
       }
-      
+
       const canPurchase = await this.usersService.canMakePurchase(user._id.toString());
       if (!canPurchase.can) {
         throw new BadRequestException(`No se puede crear el juego: ${canPurchase.reason}`);
@@ -869,7 +885,7 @@ export class UsersController {
       data: gameResponse,
       message: 'Juego creado exitosamente',
       timestamp: new Date().toISOString(),
-      path: `/api/users/${telegramId}/games`
+      path: `/api/users/${telegramId}/games`,
     };
   }
 
@@ -891,7 +907,7 @@ export class UsersController {
     name: 'telegramId',
     description: 'Telegram user ID',
     example: 123456789,
-    type: Number
+    type: Number,
   })
   @ApiResponse({
     status: 200,
@@ -901,17 +917,19 @@ export class UsersController {
         { $ref: getSchemaPath(ApiResponseDto) },
         {
           properties: {
-            data: { $ref: getSchemaPath(UserStatsDto) }
-          }
-        }
-      ]
-    }
+            data: { $ref: getSchemaPath(UserStatsDto) },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 404,
-    description: 'User not found'
+    description: 'User not found',
   })
-  async getUserStats(@Param('telegramId', ParseIntPipe) telegramId: number): Promise<ApiResponseDto<UserStatsDto>> {
+  async getUserStats(
+    @Param('telegramId', ParseIntPipe) telegramId: number,
+  ): Promise<ApiResponseDto<UserStatsDto>> {
     const user = await this.usersService.findByTelegramId(telegramId);
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
@@ -924,7 +942,7 @@ export class UsersController {
       data: userStats,
       message: 'Estadísticas del usuario obtenidas exitosamente',
       timestamp: new Date().toISOString(),
-      path: `/api/users/${telegramId}/stats`
+      path: `/api/users/${telegramId}/stats`,
     };
   }
-} 
+}

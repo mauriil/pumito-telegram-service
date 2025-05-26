@@ -53,7 +53,8 @@ export class MercadoPagoDiagnosticsService {
       }
 
       // Mostrar info del token (sin revelar el token completo)
-      const tokenPreview = accessToken.substring(0, 12) + '***' + accessToken.substring(accessToken.length - 4);
+      const tokenPreview =
+        accessToken.substring(0, 12) + '***' + accessToken.substring(accessToken.length - 4);
       configuration.tokenPreview = tokenPreview;
     }
 
@@ -61,7 +62,7 @@ export class MercadoPagoDiagnosticsService {
       errors.push('BASE_URL no está configurada');
     } else {
       configuration.webhookUrl = `${baseUrl}/webhook/mercadopago`;
-      
+
       // Verificar que la URL sea válida
       try {
         new URL(baseUrl);
@@ -74,7 +75,7 @@ export class MercadoPagoDiagnosticsService {
     if (errors.length === 0) {
       try {
         this.logger.log('Probando creación de preferencia...');
-        
+
         const testPreference = await this.mercadoPagoService.createPreference({
           amount: 100,
           description: 'Test de diagnóstico - Pack Premium',
@@ -83,9 +84,8 @@ export class MercadoPagoDiagnosticsService {
 
         configuration.testPreferenceCreated = true;
         configuration.testPreferenceId = testPreference.id;
-        
+
         this.logger.log(`Preferencia de prueba creada exitosamente: ${testPreference.id}`);
-        
       } catch (error) {
         errors.push(`Error creando preferencia de prueba: ${error.message}`);
         configuration.testPreferenceCreated = false;
@@ -94,7 +94,7 @@ export class MercadoPagoDiagnosticsService {
 
     // 3. Resultados del diagnóstico
     const success = errors.length === 0;
-    
+
     this.logger.log(`Diagnóstico completado. Éxito: ${success}`);
     if (errors.length > 0) {
       this.logger.error(`Errores encontrados: ${errors.join(', ')}`);
@@ -107,11 +107,15 @@ export class MercadoPagoDiagnosticsService {
       success,
       errors,
       warnings,
-      configuration
+      configuration,
     };
   }
 
-  async validatePaymentData(amount: number, description: string, externalReference: string): Promise<{
+  async validatePaymentData(
+    amount: number,
+    description: string,
+    externalReference: string,
+  ): Promise<{
     valid: boolean;
     errors: string[];
   }> {
@@ -154,7 +158,7 @@ export class MercadoPagoDiagnosticsService {
 
     return {
       valid: errors.length === 0,
-      errors
+      errors,
     };
   }
-} 
+}

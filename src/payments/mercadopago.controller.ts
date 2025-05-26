@@ -17,143 +17,156 @@ export class MercadoPagoController {
   ) {}
 
   @Post('mercadopago')
-  @ApiOperation({ summary: 'Handle MercadoPago webhook - Acepta cualquier formato de body' })
+  @ApiOperation({ summary: 'Handle MercadoPago webhook - Merchant Orders' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Webhook processed successfully' })
   async handleWebhook(
     @Req() req: Request,
     @Res() res: Response,
-    @Body() body: any, // Acepta cualquier tipo de body
+    @Body() body: any,
   ): Promise<Response> {
     try {
       this.logger.log(`Webhook recibido de MercadoPago: ${JSON.stringify(body)}`);
 
-      // Validar que el body tenga la estructura mínima esperada
+      // Validar que el body tenga la estructura esperada del nuevo webhook
       if (!body || typeof body !== 'object') {
         this.logger.warn('Body del webhook inválido o vacío');
         return res.status(HttpStatus.OK).json({ status: 'Invalid body format' });
       }
 
-      // Extraer type y action de manera segura
-      const type = body.type || body.eventType || null;
-      const action = body.action || body.event || null;
-      const data = body.data || body.payload || body;
+      // Extraer información del webhook de merchant order
+      const { resource, topic } = body;
 
-      // Solo procesamos eventos de pago
-      if (type !== 'payment') {
-        this.logger.log(`Evento ignorado - tipo: ${type}`);
-        return res.status(HttpStatus.OK).json({ status: 'Ignored non-payment event', type });
+      // Solo procesamos webhooks de merchant_order
+      if (topic !== 'merchant_order') {
+        this.logger.log(`Webhook ignorado - topic: ${topic}`);
+        return res
+          .status(HttpStatus.OK)
+          .json({ status: 'Ignored non-merchant_order topic', topic });
       }
 
-      // Procesamos eventos de actualización y aprobación
-      if (action === 'payment.updated' || action === 'payment.approved' || action === 'updated' || action === 'approved') {
-        // Extraer payment ID de manera flexible
-        const paymentId = data.id || data.paymentId || data.payment_id;
-        
-        if (!paymentId) {
-          this.logger.warn('No se pudo extraer payment ID del webhook');
-          return res.status(HttpStatus.OK).json({ status: 'Payment ID not found' });
-        }
+      // Extraer el merchant order ID de la URL del resource
+      const merchantOrderIdMatch = resource?.match(/merchant_orders\/(\d+)/);
+      if (!merchantOrderIdMatch) {
+        this.logger.warn('No se pudo extraer merchant order ID del resource URL');
+        return res
+          .status(HttpStatus.OK)
+          .json({ status: 'Merchant order ID not found in resource' });
+      }
 
-        this.logger.log(`Procesando pago ID: ${paymentId}`);
+      const merchantOrderId = merchantOrderIdMatch[1];
+      this.logger.log(`Procesando merchant order ID: ${merchantOrderId}`);
 
-        const paymentStatus = await this.mercadopago.verifyPayment(paymentId);
+      // Verificar el estado del pago usando el merchant order
+      const paymentStatus = await this.mercadopago.verifyMerchantOrderPayment(merchantOrderId);
 
-        if (paymentStatus.approved) {
-          try {
-            // Intentar confirmar el pago y procesar los créditos
-            await this.payments.markConfirmed(paymentId);
-            this.logger.log(`Pago confirmado para la orden: ${paymentId}`);
+      if (paymentStatus.approved && paymentStatus.paymentData) {
+        try {
+          // Buscar el pago usando el external_reference del merchant order
+          const externalReference = paymentStatus.paymentData.merchantOrder.externalReference;
 
-            // Actualizar mensaje en Telegram
-            const payment = await this.payments.getPaymentById(paymentId);
-            if (payment && payment.messageId) {
-              await this.telegraf.updatePaymentMessage(payment.userId, paymentId, 'confirmed');
-            }
-          } catch (confirmError) {
-            this.logger.error(`Error confirmando pago exitoso en webhook: ${confirmError.message}`, confirmError.stack);
-            
-            // El pago fue exitoso en MercadoPago pero falló al procesar
-            // Marcar como fallido e intentar devolver el dinero
-            await this.payments.markFailedWithRefund(
-              paymentId, 
-              `Pago exitoso pero falló al procesar créditos: ${confirmError.message}`
+          if (!externalReference) {
+            this.logger.warn('External reference no encontrado en merchant order');
+            return res.status(HttpStatus.OK).json({ status: 'External reference not found' });
+          }
+
+          // Actualizar el pago con los datos del merchant order
+          await this.payments.updatePaymentWithMerchantOrderData(
+            externalReference,
+            paymentStatus.paymentData,
+          );
+
+          // Confirmar el pago y procesar los créditos
+          await this.payments.markConfirmed(externalReference);
+          this.logger.log(`Pago confirmado para external reference: ${externalReference}`);
+
+          // Actualizar mensaje en Telegram
+          const payment = await this.payments.getPaymentById(externalReference);
+          if (payment && payment.messageId) {
+            await this.telegraf.updatePaymentMessage(
+              payment.userId,
+              externalReference,
+              'confirmed',
             );
-            
+          }
+        } catch (confirmError) {
+          this.logger.error(
+            `Error confirmando pago exitoso en webhook: ${confirmError.message}`,
+            confirmError.stack,
+          );
+
+          const externalReference = paymentStatus.paymentData?.merchantOrder?.externalReference;
+          if (externalReference) {
+            // Marcar como fallido sin intentar reembolso (ya no está disponible)
+            await this.payments.markFailed(
+              externalReference,
+              `Pago exitoso pero falló al procesar créditos: ${confirmError.message}`,
+            );
+
             // Actualizar mensaje en Telegram
-            const paymentForUpdate = await this.payments.getPaymentById(paymentId);
+            const paymentForUpdate = await this.payments.getPaymentById(externalReference);
             if (paymentForUpdate && paymentForUpdate.messageId) {
-              await this.telegraf.updatePaymentMessage(paymentForUpdate.userId, paymentId, 'failed');
+              await this.telegraf.updatePaymentMessage(
+                paymentForUpdate.userId,
+                externalReference,
+                'failed',
+              );
             }
 
-            // Notificar al usuario sobre el problema y la devolución
-            const paymentForNotification = await this.payments.getPaymentById(paymentId);
+            // Notificar al usuario sobre el problema
+            const paymentForNotification = await this.payments.getPaymentById(externalReference);
             if (paymentForNotification) {
               await this.telegraf.sendNotification(
                 paymentForNotification.userId,
                 `⚠️ <b>Problema con tu pago</b>\n\n` +
-                `Tu pago fue procesado exitosamente, pero hubo un error al añadir los créditos.\n` +
-                `Estamos procesando la devolución automáticamente.\n\n` +
-                `Si no recibes la devolución en 24-48 horas, contacta soporte.`
+                  `Tu pago fue procesado exitosamente en MercadoPago, pero hubo un error al añadir los créditos.\n` +
+                  `Por favor contacta soporte con el ID de pago: ${externalReference}\n\n` +
+                  `Nuestro equipo resolverá este problema lo antes posible.`,
               );
             }
           }
-        } else {
-          // Si el pago no está aprobado, lo marcamos como rechazado con el detalle
-          await this.payments.markRejected(
-            paymentId,
-            paymentStatus.status,
-            paymentStatus.statusDetail
-          );
-          this.logger.log(`Pago rechazado para la orden: ${paymentId} - ${paymentStatus.status}: ${paymentStatus.statusDetail}`);
-
-          // Actualizar mensaje en Telegram
-          const payment = await this.payments.getPaymentById(paymentId);
-          if (payment && payment.messageId) {
-            await this.telegraf.updatePaymentMessage(payment.userId, paymentId, 'rejected');
-          }
         }
       } else {
-        this.logger.log(`Acción ignorada - action: ${action}`);
-        return res.status(HttpStatus.OK).json({ status: 'Ignored action', action });
+        // Si el pago no está aprobado, buscar el external reference para marcarlo como rechazado
+        const externalReference = paymentStatus.paymentData?.merchantOrder?.externalReference;
+
+        if (externalReference) {
+          // Actualizar el pago con los datos del merchant order (aunque no esté aprobado)
+          if (paymentStatus.paymentData) {
+            await this.payments.updatePaymentWithMerchantOrderData(
+              externalReference,
+              paymentStatus.paymentData,
+            );
+          }
+
+          // Marcar como rechazado con el detalle
+          await this.payments.markRejected(
+            externalReference,
+            paymentStatus.status,
+            paymentStatus.statusDetail,
+          );
+          this.logger.log(
+            `Pago rechazado para external reference: ${externalReference} - ${paymentStatus.status}: ${paymentStatus.statusDetail}`,
+          );
+
+          // Actualizar mensaje en Telegram
+          const payment = await this.payments.getPaymentById(externalReference);
+          if (payment && payment.messageId) {
+            await this.telegraf.updatePaymentMessage(payment.userId, externalReference, 'rejected');
+          }
+        } else {
+          this.logger.warn(
+            `No se pudo obtener external reference para merchant order: ${merchantOrderId}`,
+          );
+        }
       }
 
       return res.status(HttpStatus.OK).json({ status: 'OK' });
     } catch (error) {
       this.logger.error(`Error procesando webhook: ${error.message}`, error.stack);
-      
-      // Si hay un error, intentamos marcar el pago como error
-      const data = body?.data || body?.payload || body;
-      const paymentId = data?.id || data?.paymentId || data?.payment_id;
-      
-      if (paymentId) {
-        try {
-          // Determinar si es un error crítico que requiere marcar como fallido
-          const isCriticalError = error.message.includes('Cast to ObjectId failed') || 
-                                 error.message.includes('Payment not found') ||
-                                 error.message.includes('Invalid payment data');
-          
-          if (isCriticalError) {
-            await this.payments.markFailed(paymentId, `Error crítico: ${error.message}`);
-            this.logger.log(`Pago marcado como fallido debido a error crítico: ${paymentId}`);
-          } else {
-            await this.payments.markError(paymentId, error.message);
-            this.logger.log(`Pago marcado como error: ${paymentId}`);
-          }
-          
-          // Actualizar mensaje en Telegram
-          const payment = await this.payments.getPaymentById(paymentId);
-          if (payment && payment.messageId) {
-            const status = isCriticalError ? 'failed' : 'error';
-            await this.telegraf.updatePaymentMessage(payment.userId, paymentId, status);
-          }
-        } catch (markError) {
-          this.logger.error(`Error marcando pago como error/fallido: ${markError.message}`, markError.stack);
-        }
-      }
 
-      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ 
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
         error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   }
@@ -161,24 +174,12 @@ export class MercadoPagoController {
   @Get('mercadopago')
   @ApiOperation({ summary: 'Handle MercadoPago back URLs - Success, Failure, Pending' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Payment status processed successfully' })
-  async handleBackUrl(
-    @Query() query: any,
-    @Res() res: Response,
-  ): Promise<Response> {
+  async handleBackUrl(@Query() query: any, @Res() res: Response): Promise<Response> {
     try {
       this.logger.log(`Back URL recibida de MercadoPago: ${JSON.stringify(query)}`);
 
       // Extraer parámetros de la query
-      const {
-        status,
-        collection_status,
-        preference_id,
-        external_reference,
-        collection_id,
-        payment_id,
-        payment_type,
-        merchant_order_id
-      } = query;
+      const { status, collection_status, preference_id, external_reference } = query;
 
       // Validar que tenemos los parámetros mínimos necesarios
       if (!external_reference) {
@@ -194,7 +195,7 @@ export class MercadoPagoController {
       const paymentStatus = {
         approved: status === 'approved' && collection_status === 'approved',
         status: status || 'unknown',
-        statusDetail: `Status: ${status}, Collection Status: ${collection_status}`
+        statusDetail: `Status: ${status}, Collection Status: ${collection_status}`,
       };
 
       // Procesar el pago según el estado
@@ -212,47 +213,40 @@ export class MercadoPagoController {
 
           return this.renderPaymentResult(res, 'success', 'Pago confirmado exitosamente');
         } catch (confirmError) {
-          this.logger.error(`Error confirmando pago exitoso: ${confirmError.message}`, confirmError.stack);
-          
-          try {
-            // El pago fue exitoso en MercadoPago pero falló al procesar
-            // Marcar como fallido e intentar devolver el dinero
-            await this.payments.markFailedWithRefund(
-              paymentId, 
-              `Pago exitoso pero falló al procesar créditos: ${confirmError.message}`
-            );
-            
-                         // Actualizar mensaje en Telegram
-             const paymentForUpdate = await this.payments.getPaymentById(paymentId);
-             if (paymentForUpdate && paymentForUpdate.messageId) {
-               await this.telegraf.updatePaymentMessage(paymentForUpdate.userId, paymentId, 'failed');
-             }
+          this.logger.error(
+            `Error confirmando pago exitoso: ${confirmError.message}`,
+            confirmError.stack,
+          );
 
-             // Notificar al usuario sobre el problema y la devolución
-             const paymentForNotification = await this.payments.getPaymentById(paymentId);
-             if (paymentForNotification) {
-                             await this.telegraf.sendNotification(
-                 paymentForNotification.userId,
-                `⚠️ <b>Problema con tu pago</b>\n\n` +
-                `Tu pago fue procesado exitosamente, pero hubo un error al añadir los créditos.\n` +
-                `Estamos procesando la devolución automáticamente.\n\n` +
-                `Si no recibes la devolución en 24-48 horas, contacta soporte.`
-              );
-            }
+          // Marcar como fallido sin intentar reembolso (ya no está disponible)
+          await this.payments.markFailed(
+            paymentId,
+            `Pago exitoso pero falló al procesar créditos: ${confirmError.message}`,
+          );
 
-            return this.renderPaymentResult(
-              res, 
-              'error', 
-              'Pago procesado pero hubo un error. Se está procesando la devolución automáticamente.'
-            );
-          } catch (refundError) {
-            this.logger.error(`Error procesando devolución: ${refundError.message}`, refundError.stack);
-            return this.renderPaymentResult(
-              res, 
-              'error', 
-              'Error crítico. Por favor contacta soporte con el ID de pago: ' + paymentId
+          // Actualizar mensaje en Telegram
+          const paymentForUpdate = await this.payments.getPaymentById(paymentId);
+          if (paymentForUpdate && paymentForUpdate.messageId) {
+            await this.telegraf.updatePaymentMessage(paymentForUpdate.userId, paymentId, 'failed');
+          }
+
+          // Notificar al usuario sobre el problema
+          const paymentForNotification = await this.payments.getPaymentById(paymentId);
+          if (paymentForNotification) {
+            await this.telegraf.sendNotification(
+              paymentForNotification.userId,
+              `⚠️ <b>Problema con tu pago</b>\n\n` +
+                `Tu pago fue procesado exitosamente en MercadoPago, pero hubo un error al añadir los créditos.\n` +
+                `Por favor contacta soporte con el ID de pago: ${paymentId}\n\n` +
+                `Nuestro equipo resolverá este problema lo antes posible.`,
             );
           }
+
+          return this.renderPaymentResult(
+            res,
+            'error',
+            'Pago procesado pero hubo un error. Por favor contacta soporte.',
+          );
         }
       } else {
         // Determinar si es un rechazo o está pendiente
@@ -263,9 +257,11 @@ export class MercadoPagoController {
           await this.payments.markRejected(
             paymentId,
             paymentStatus.status,
-            paymentStatus.statusDetail
+            paymentStatus.statusDetail,
           );
-          this.logger.log(`Pago rechazado via back URL para la orden: ${paymentId} - ${paymentStatus.status}: ${paymentStatus.statusDetail}`);
+          this.logger.log(
+            `Pago rechazado via back URL para la orden: ${paymentId} - ${paymentStatus.status}: ${paymentStatus.statusDetail}`,
+          );
 
           // Actualizar mensaje en Telegram
           const payment = await this.payments.getPaymentById(paymentId);
@@ -278,31 +274,36 @@ export class MercadoPagoController {
           this.logger.log(`Pago pendiente via back URL para la orden: ${paymentId}`);
           return this.renderPaymentResult(res, 'pending', 'El pago está siendo procesado');
         } else {
-          this.logger.log(`Estado de pago desconocido via back URL para la orden: ${paymentId} - ${paymentStatus.status}`);
+          this.logger.log(
+            `Estado de pago desconocido via back URL para la orden: ${paymentId} - ${paymentStatus.status}`,
+          );
           return this.renderPaymentResult(res, 'pending', 'El pago está siendo verificado');
         }
       }
     } catch (error) {
       this.logger.error(`Error procesando back URL: ${error.message}`, error.stack);
-      
+
       // Intentar marcar el pago como error si tenemos el ID
       const { preference_id, external_reference } = query;
       const paymentId = preference_id || external_reference;
-      
+
       if (paymentId) {
         try {
           await this.payments.markError(paymentId, `Error en back URL: ${error.message}`);
-          
+
           // Actualizar mensaje en Telegram
           const payment = await this.payments.getPaymentById(paymentId);
           if (payment && payment.messageId) {
             await this.telegraf.updatePaymentMessage(payment.userId, paymentId, 'error');
           }
         } catch (markError) {
-          this.logger.error(`Error marcando pago como error en back URL: ${markError.message}`, markError.stack);
+          this.logger.error(
+            `Error marcando pago como error en back URL: ${markError.message}`,
+            markError.stack,
+          );
         }
       }
-      
+
       return this.renderPaymentResult(res, 'error', 'Error al procesar el pago');
     }
   }
@@ -328,36 +329,40 @@ export class MercadoPagoController {
     return this.handleBackUrl(query, res);
   }
 
-  private renderPaymentResult(res: Response, status: 'success' | 'failure' | 'pending' | 'error', message: string): Response {
+  private renderPaymentResult(
+    res: Response,
+    status: 'success' | 'failure' | 'pending' | 'error',
+    message: string,
+  ): Response {
     const statusConfig = {
       success: {
         title: '✅ Pago Exitoso',
         color: '#28a745',
         icon: '✅',
-        description: 'Tu pago ha sido procesado correctamente.'
+        description: 'Tu pago ha sido procesado correctamente.',
       },
       failure: {
         title: '❌ Pago Rechazado',
         color: '#dc3545',
         icon: '❌',
-        description: 'El pago no pudo ser procesado.'
+        description: 'El pago no pudo ser procesado.',
       },
       pending: {
         title: '⏳ Pago Pendiente',
         color: '#ffc107',
         icon: '⏳',
-        description: 'Tu pago está siendo procesado.'
+        description: 'Tu pago está siendo procesado.',
       },
       error: {
         title: '⚠️ Error',
         color: '#fd7e14',
         icon: '⚠️',
-        description: 'Ocurrió un error al procesar el pago.'
-      }
+        description: 'Ocurrió un error al procesar el pago.',
+      },
     };
 
     const config = statusConfig[status];
-    
+
     const html = `
     <!DOCTYPE html>
     <html lang="es">
@@ -469,4 +474,4 @@ export class MercadoPagoController {
 
     return res.status(HttpStatus.OK).send(html);
   }
-} 
+}

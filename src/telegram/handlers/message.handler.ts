@@ -26,7 +26,7 @@ export class MessageHandler {
         ctx.chat.id,
         ctx.from.id.toString(),
         ctx.message.text,
-        'user'
+        'user',
       );
 
       // Aquí puedes agregar la lógica para procesar el mensaje y generar una respuesta
@@ -41,7 +41,7 @@ export class MessageHandler {
           ctx.chat.id,
           ctx.from.id.toString(),
           sentMessage.text,
-          'bot'
+          'bot',
         );
       }
     } catch (error) {
@@ -55,4 +55,4 @@ export class MessageHandler {
     // Por ahora, solo devolvemos un mensaje simple
     return `Recibí tu mensaje: "${text}"`;
   }
-} 
+}

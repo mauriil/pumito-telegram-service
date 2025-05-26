@@ -1,4 +1,14 @@
-import { Body, Controller, Post, Get, HttpStatus, Logger, BadRequestException, NotFoundException, Param } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Post,
+  Get,
+  HttpStatus,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+  Param,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsEnum } from 'class-validator';
 import { PaymentsService } from '../db/payments.service';
@@ -48,9 +58,10 @@ export class PaymentsController {
   ) {}
 
   @Post('create-payment-link')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Generar link de pago para un usuario y pack específico',
-    description: 'Crea un enlace de pago personalizado para que un usuario pueda adquirir un pack de créditos'
+    description:
+      'Crea un enlace de pago personalizado para que un usuario pueda adquirir un pack de créditos',
   })
   @ApiBody({
     type: CreatePaymentLinkDto,
@@ -60,20 +71,20 @@ export class PaymentsController {
         value: {
           userId: '123456789',
           packId: 'premium-pack-2024',
-          paymentMethod: 'mercadopago'
-        }
+          paymentMethod: 'mercadopago',
+        },
       },
       'Con crypto': {
         value: {
           userId: '123456789',
           packId: 'premium-pack-2024',
-          paymentMethod: 'USDT_TRC20'
-        }
-      }
-    }
+          paymentMethod: 'USDT_TRC20',
+        },
+      },
+    },
   })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
+  @ApiResponse({
+    status: HttpStatus.OK,
     description: 'Link de pago generado exitosamente',
     schema: {
       type: 'object',
@@ -82,33 +93,40 @@ export class PaymentsController {
         data: {
           type: 'object',
           properties: {
-            paymentUrl: { type: 'string', example: 'https://mercadopago.com.ar/checkout/v1/redirect?preference-id=...' },
+            paymentUrl: {
+              type: 'string',
+              example: 'https://mercadopago.com.ar/checkout/v1/redirect?preference-id=...',
+            },
             paymentId: { type: 'string', example: '64f1234567890abcdef12345' },
             amount: { type: 'number', example: 19.99 },
             credits: { type: 'number', example: 2500 },
             packTitle: { type: 'string', example: 'Pack Premium' },
             paymentMethod: { type: 'string', example: 'mercadopago' },
-            expiresAt: { type: 'string', example: '2024-01-15T11:00:00.000Z' }
-          }
+            expiresAt: { type: 'string', example: '2024-01-15T11:00:00.000Z' },
+          },
         },
         message: { type: 'string', example: 'Link de pago generado exitosamente' },
-        timestamp: { type: 'string', example: '2024-01-15T10:30:00.000Z' }
-      }
-    }
+        timestamp: { type: 'string', example: '2024-01-15T10:30:00.000Z' },
+      },
+    },
   })
-  @ApiResponse({ 
-    status: HttpStatus.BAD_REQUEST, 
-    description: 'Datos inválidos o usuario no puede realizar compras' 
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Datos inválidos o usuario no puede realizar compras',
   })
-  @ApiResponse({ 
-    status: HttpStatus.NOT_FOUND, 
-    description: 'Pack no encontrado' 
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Pack no encontrado',
   })
-  async createPaymentLink(@Body() createPaymentDto: CreatePaymentLinkDto): Promise<PaymentLinkResponse> {
+  async createPaymentLink(
+    @Body() createPaymentDto: CreatePaymentLinkDto,
+  ): Promise<PaymentLinkResponse> {
     try {
       const { userId, packId, paymentMethod = 'mercadopago' } = createPaymentDto;
 
-      this.logger.log(`Generando link de pago para usuario ${userId} y pack ${packId} con método ${paymentMethod}`);
+      this.logger.log(
+        `Generando link de pago para usuario ${userId} y pack ${packId} con método ${paymentMethod}`,
+      );
 
       // 1. Verificar que el usuario existe y puede hacer compras
       const user = await this.usersService.findById(userId);
@@ -118,7 +136,9 @@ export class PaymentsController {
 
       const canPurchase = await this.usersService.canMakePurchase(userId);
       if (!canPurchase.can) {
-        throw new BadRequestException(`El usuario no puede realizar compras: ${canPurchase.reason}`);
+        throw new BadRequestException(
+          `El usuario no puede realizar compras: ${canPurchase.reason}`,
+        );
       }
 
       // 2. Verificar que el pack existe y está activo
@@ -145,11 +165,15 @@ export class PaymentsController {
         name: pack.title,
         price: pack.price,
         credits: pack.amount + (pack.bonusCredits || 0), // Incluir créditos bonus si los hay
-        description: pack.description
+        description: pack.description,
       };
 
       // 5. Generar el link de pago
-      const paymentUrl = await this.paymentsService.createInvoice(userId, packForPayment, paymentMethod);
+      const paymentUrl = await this.paymentsService.createInvoice(
+        userId,
+        packForPayment,
+        paymentMethod,
+      );
 
       // 6. Obtener el pago creado para devolver información completa
       const createdPayment = await this.paymentsService.getPendingPayment(userId);
@@ -157,7 +181,9 @@ export class PaymentsController {
         throw new Error('Error al crear el pago en la base de datos');
       }
 
-      this.logger.log(`Link de pago generado exitosamente para usuario ${userId}, pago ID: ${createdPayment._id}`);
+      this.logger.log(
+        `Link de pago generado exitosamente para usuario ${userId}, pago ID: ${createdPayment._id}`,
+      );
 
       return {
         success: true,
@@ -168,15 +194,14 @@ export class PaymentsController {
           credits: packForPayment.credits,
           packTitle: pack.title,
           paymentMethod,
-          expiresAt: createdPayment.expiresAt.toISOString()
+          expiresAt: createdPayment.expiresAt.toISOString(),
         },
         message: 'Link de pago generado exitosamente',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
-
     } catch (error) {
       this.logger.error(`Error generando link de pago: ${error.message}`, error.stack);
-      
+
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
@@ -186,12 +211,13 @@ export class PaymentsController {
   }
 
   @Get('diagnostics')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Ejecutar diagnóstico de MercadoPago',
-    description: 'Verifica la configuración de MercadoPago y detecta posibles problemas que causan errores como PXB01'
+    description:
+      'Verifica la configuración de MercadoPago y detecta posibles problemas que causan errores como PXB01',
   })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
+  @ApiResponse({
+    status: HttpStatus.OK,
     description: 'Diagnóstico completado',
     schema: {
       type: 'object',
@@ -200,21 +226,20 @@ export class PaymentsController {
         errors: { type: 'array', items: { type: 'string' } },
         warnings: { type: 'array', items: { type: 'string' } },
         configuration: { type: 'object' },
-        timestamp: { type: 'string' }
-      }
-    }
+        timestamp: { type: 'string' },
+      },
+    },
   })
   async runDiagnostics() {
     try {
       this.logger.log('Ejecutando diagnóstico de MercadoPago...');
-      
+
       const result = await this.diagnosticsService.runDiagnostics();
-      
+
       return {
         ...result,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
-      
     } catch (error) {
       this.logger.error(`Error en diagnóstico: ${error.message}`, error.stack);
       throw new BadRequestException(`Error ejecutando diagnóstico: ${error.message}`);
@@ -222,12 +247,13 @@ export class PaymentsController {
   }
 
   @Get('failed/:userId')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Obtener pagos fallidos de un usuario',
-    description: 'Retorna los pagos que han fallado, expirado o fueron rechazados para un usuario específico'
+    description:
+      'Retorna los pagos que han fallado, expirado o fueron rechazados para un usuario específico',
   })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
+  @ApiResponse({
+    status: HttpStatus.OK,
     description: 'Lista de pagos fallidos',
     schema: {
       type: 'array',
@@ -242,10 +268,10 @@ export class PaymentsController {
           status: { type: 'string' },
           statusDetail: { type: 'string' },
           createdAt: { type: 'string' },
-          errorMessage: { type: 'string' }
-        }
-      }
-    }
+          errorMessage: { type: 'string' },
+        },
+      },
+    },
   })
   async getFailedPayments(@Param('userId') userId: string) {
     try {
@@ -254,15 +280,14 @@ export class PaymentsController {
       }
 
       this.logger.log(`Obteniendo pagos fallidos para usuario: ${userId}`);
-      
+
       const failedPayments = await this.paymentsService.getFailedPayments(userId);
-      
+
       return {
         success: true,
         count: failedPayments.length,
-        payments: failedPayments
+        payments: failedPayments,
       };
-      
     } catch (error) {
       this.logger.error(`Error obteniendo pagos fallidos: ${error.message}`, error.stack);
       throw new BadRequestException(`Error obteniendo pagos fallidos: ${error.message}`);
@@ -270,21 +295,21 @@ export class PaymentsController {
   }
 
   @Post('retry/:paymentId')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Reintentar un pago fallido',
-    description: 'Crea un nuevo enlace de pago para un pago que falló, expiró o fue rechazado'
+    description: 'Crea un nuevo enlace de pago para un pago que falló, expiró o fue rechazado',
   })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
+  @ApiResponse({
+    status: HttpStatus.OK,
     description: 'Nuevo enlace de pago creado',
     schema: {
       type: 'object',
       properties: {
         success: { type: 'boolean' },
         paymentUrl: { type: 'string' },
-        message: { type: 'string' }
-      }
-    }
+        message: { type: 'string' },
+      },
+    },
   })
   async retryPayment(@Param('paymentId') paymentId: string) {
     try {
@@ -293,98 +318,22 @@ export class PaymentsController {
       }
 
       this.logger.log(`Reintentando pago: ${paymentId}`);
-      
+
       const newPaymentUrl = await this.paymentsService.retryFailedPayment(paymentId);
-      
+
       return {
         success: true,
         paymentUrl: newPaymentUrl,
-        message: 'Nuevo enlace de pago creado exitosamente'
+        message: 'Nuevo enlace de pago creado exitosamente',
       };
-      
     } catch (error) {
       this.logger.error(`Error reintentando pago: ${error.message}`, error.stack);
-      
+
       if (error.message.includes('no encontrado')) {
         throw new NotFoundException(error.message);
       }
-      
+
       throw new BadRequestException(`Error reintentando pago: ${error.message}`);
     }
   }
-
-  @Get('refund-status/:paymentId')
-  @ApiOperation({ 
-    summary: 'Consultar estado de devolución de un pago',
-    description: 'Obtiene información sobre el estado de la devolución de un pago específico'
-  })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
-    description: 'Estado de devolución obtenido',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        refundInfo: {
-          type: 'object',
-          properties: {
-            hasRefund: { type: 'boolean' },
-            refundRequested: { type: 'boolean' },
-            refundProcessed: { type: 'boolean' },
-            refundFailed: { type: 'boolean' },
-            refundId: { type: 'string' },
-            refundStatus: { type: 'string' },
-            refundFailedReason: { type: 'string' }
-          }
-        }
-      }
-    }
-  })
-  async getRefundStatus(@Param('paymentId') paymentId: string) {
-    try {
-      if (!paymentId || paymentId.trim() === '') {
-        throw new BadRequestException('El ID del pago es requerido');
-      }
-
-      this.logger.log(`Consultando estado de devolución para pago: ${paymentId}`);
-      
-      const refundInfo = await this.paymentsService.getRefundStatus(paymentId);
-      
-      return {
-        success: true,
-        refundInfo
-      };
-      
-    } catch (error) {
-      this.logger.error(`Error consultando estado de devolución: ${error.message}`, error.stack);
-      throw new BadRequestException(`Error consultando estado de devolución: ${error.message}`);
-    }
-  }
-
-  @Get('pending-refunds')
-  @ApiOperation({ 
-    summary: 'Obtener pagos con devoluciones pendientes',
-    description: 'Lista todos los pagos que tienen devoluciones solicitadas pero no procesadas'
-  })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
-    description: 'Lista de pagos con devoluciones pendientes'
-  })
-  async getPendingRefunds() {
-    try {
-      this.logger.log('Obteniendo pagos con devoluciones pendientes...');
-      
-      const pendingRefunds = await this.paymentsService.getPaymentsWithPendingRefunds();
-      
-      return {
-        success: true,
-        count: pendingRefunds.length,
-        payments: pendingRefunds
-      };
-      
-    } catch (error) {
-      this.logger.error(`Error obteniendo devoluciones pendientes: ${error.message}`, error.stack);
-      throw new BadRequestException(`Error obteniendo devoluciones pendientes: ${error.message}`);
-    }
-  }
-} 
+}

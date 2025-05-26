@@ -75,4 +75,4 @@ export class CreditPack {
 }
 
 export type CreditPackDocument = HydratedDocument<CreditPack>;
-export const CreditPackSchema = SchemaFactory.createForClass(CreditPack); 
+export const CreditPackSchema = SchemaFactory.createForClass(CreditPack);

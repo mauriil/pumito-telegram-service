@@ -1,45 +1,46 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Put, 
-  Param, 
-  Body, 
-  Query, 
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Param,
+  Body,
+  Query,
   NotFoundException,
   HttpStatus,
   HttpCode,
-  BadRequestException 
+  BadRequestException,
 } from '@nestjs/common';
-import { 
-  ApiTags, 
-  ApiOperation, 
-  ApiResponse, 
-  ApiParam, 
-  ApiQuery, 
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
   ApiBody,
   ApiBearerAuth,
   ApiExtraModels,
-  getSchemaPath
+  getSchemaPath,
 } from '@nestjs/swagger';
-import { CreditPacksService, CreateCreditPackDto as ServiceCreateDto } from '../db/credit-packs.service';
-import { 
-  CreateCreditPackDto, 
-  UpdateCreditPackDto, 
-  CreditPackResponseDto, 
+import {
+  CreditPacksService,
+  CreateCreditPackDto as ServiceCreateDto,
+} from '../db/credit-packs.service';
+import {
+  CreateCreditPackDto,
+  UpdateCreditPackDto,
+  CreditPackResponseDto,
   CreditPackStatsDto,
   GlobalStatsDto,
   ApiResponseDto,
-  CreditPackCategory
+  CreditPackCategory,
 } from './dto/credit-pack.dto';
 
 @ApiTags('Credit Packs')
 @Controller('credit-packs')
 @ApiExtraModels(CreditPackResponseDto, CreditPackStatsDto, GlobalStatsDto, ApiResponseDto)
 export class CreditPacksController {
-  constructor(
-    private readonly creditPacksService: CreditPacksService,
-  ) {}
+  constructor(private readonly creditPacksService: CreditPacksService) {}
 
   @Get()
   @ApiOperation({
@@ -64,21 +65,21 @@ export class CreditPacksController {
     required: false,
     description: 'Include inactive packs in the response',
     example: false,
-    type: Boolean
+    type: Boolean,
   })
   @ApiQuery({
     name: 'category',
     required: false,
     description: 'Filter packs by category',
     enum: CreditPackCategory,
-    example: 'premium'
+    example: 'premium',
   })
   @ApiQuery({
     name: 'includePaymentLinks',
     required: false,
     description: 'Include payment links in the response (default: true)',
     example: true,
-    type: Boolean
+    type: Boolean,
   })
   @ApiResponse({
     status: 200,
@@ -90,12 +91,12 @@ export class CreditPacksController {
           properties: {
             data: {
               type: 'array',
-              items: { $ref: getSchemaPath(CreditPackResponseDto) }
-            }
-          }
-        }
-      ]
-    }
+              items: { $ref: getSchemaPath(CreditPackResponseDto) },
+            },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 400,
@@ -107,11 +108,11 @@ export class CreditPacksController {
           properties: {
             success: { example: false },
             message: { example: 'Invalid category parameter' },
-            data: { example: null }
-          }
-        }
-      ]
-    }
+            data: { example: null },
+          },
+        },
+      ],
+    },
   })
   async getAvailablePacks(
     @Query('includeInactive') includeInactive?: string,
@@ -166,7 +167,7 @@ export class CreditPacksController {
       data: transformedPacks,
       message: 'Packs de créditos obtenidos exitosamente',
       timestamp: new Date().toISOString(),
-      path: '/api/credit-packs'
+      path: '/api/credit-packs',
     };
   }
 
@@ -188,12 +189,12 @@ export class CreditPacksController {
           properties: {
             data: {
               type: 'array',
-              items: { $ref: getSchemaPath(CreditPackResponseDto) }
-            }
-          }
-        }
-      ]
-    }
+              items: { $ref: getSchemaPath(CreditPackResponseDto) },
+            },
+          },
+        },
+      ],
+    },
   })
   async getActivePacks(): Promise<ApiResponseDto<CreditPackResponseDto[]>> {
     const packs = await this.creditPacksService.getPacksForFrontend();
@@ -203,7 +204,7 @@ export class CreditPacksController {
       data: packs,
       message: 'Packs activos obtenidos exitosamente',
       timestamp: new Date().toISOString(),
-      path: '/api/credit-packs/active'
+      path: '/api/credit-packs/active',
     };
   }
 
@@ -225,12 +226,12 @@ export class CreditPacksController {
           properties: {
             data: {
               type: 'array',
-              items: { $ref: getSchemaPath(CreditPackResponseDto) }
-            }
-          }
-        }
-      ]
-    }
+              items: { $ref: getSchemaPath(CreditPackResponseDto) },
+            },
+          },
+        },
+      ],
+    },
   })
   async getPopularPacks(): Promise<ApiResponseDto<CreditPackResponseDto[]>> {
     const packs = await this.creditPacksService.findPopularPacks();
@@ -261,7 +262,7 @@ export class CreditPacksController {
       data: transformedPacks,
       message: 'Packs populares obtenidos exitosamente',
       timestamp: new Date().toISOString(),
-      path: '/api/credit-packs/popular'
+      path: '/api/credit-packs/popular',
     };
   }
 
@@ -277,7 +278,7 @@ export class CreditPacksController {
     name: 'category',
     description: 'Pack category to filter by',
     enum: CreditPackCategory,
-    example: 'premium'
+    example: 'premium',
   })
   @ApiResponse({
     status: 200,
@@ -289,12 +290,12 @@ export class CreditPacksController {
           properties: {
             data: {
               type: 'array',
-              items: { $ref: getSchemaPath(CreditPackResponseDto) }
-            }
-          }
-        }
-      ]
-    }
+              items: { $ref: getSchemaPath(CreditPackResponseDto) },
+            },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 400,
@@ -306,13 +307,15 @@ export class CreditPacksController {
           properties: {
             success: { example: false },
             message: { example: 'Invalid category parameter' },
-            data: { example: null }
-          }
-        }
-      ]
-    }
+            data: { example: null },
+          },
+        },
+      ],
+    },
   })
-  async getPacksByCategory(@Param('category') category: string): Promise<ApiResponseDto<CreditPackResponseDto[]>> {
+  async getPacksByCategory(
+    @Param('category') category: string,
+  ): Promise<ApiResponseDto<CreditPackResponseDto[]>> {
     const packs = await this.creditPacksService.findByCategory(category);
 
     const transformedPacks = packs.map(pack => ({
@@ -341,7 +344,7 @@ export class CreditPacksController {
       data: transformedPacks,
       message: `Packs de categoría '${category}' obtenidos exitosamente`,
       timestamp: new Date().toISOString(),
-      path: `/api/credit-packs/category/${category}`
+      path: `/api/credit-packs/category/${category}`,
     };
   }
 
@@ -356,7 +359,7 @@ export class CreditPacksController {
   @ApiParam({
     name: 'packId',
     description: 'Unique identifier of the credit pack',
-    example: 'premium-pack-2024'
+    example: 'premium-pack-2024',
   })
   @ApiResponse({
     status: 200,
@@ -366,11 +369,11 @@ export class CreditPacksController {
         { $ref: getSchemaPath(ApiResponseDto) },
         {
           properties: {
-            data: { $ref: getSchemaPath(CreditPackResponseDto) }
-          }
-        }
-      ]
-    }
+            data: { $ref: getSchemaPath(CreditPackResponseDto) },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 404,
@@ -382,15 +385,17 @@ export class CreditPacksController {
           properties: {
             success: { example: false },
             message: { example: 'Pack de créditos no encontrado' },
-            data: { example: null }
-          }
-        }
-      ]
-    }
+            data: { example: null },
+          },
+        },
+      ],
+    },
   })
-  async getPackById(@Param('packId') packId: string): Promise<ApiResponseDto<CreditPackResponseDto>> {
+  async getPackById(
+    @Param('packId') packId: string,
+  ): Promise<ApiResponseDto<CreditPackResponseDto>> {
     const pack = await this.creditPacksService.findByPackId(packId);
-    
+
     if (!pack) {
       throw new NotFoundException('Pack de créditos no encontrado');
     }
@@ -419,7 +424,7 @@ export class CreditPacksController {
       },
       message: 'Detalles del pack obtenidos exitosamente',
       timestamp: new Date().toISOString(),
-      path: `/api/credit-packs/${packId}`
+      path: `/api/credit-packs/${packId}`,
     };
   }
 
@@ -462,8 +467,8 @@ export class CreditPacksController {
           emoji: '💎',
           color: '#9C27B0',
           category: 'premium',
-          paymentMethods: ['stripe', 'paypal', 'mercadopago']
-        }
+          paymentMethods: ['stripe', 'paypal', 'mercadopago'],
+        },
       },
       'Starter Pack': {
         summary: 'Starter Pack Example',
@@ -479,10 +484,10 @@ export class CreditPacksController {
           currency: 'USD',
           emoji: '🎯',
           color: '#4CAF50',
-          category: 'starter'
-        }
-      }
-    }
+          category: 'starter',
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 201,
@@ -492,11 +497,11 @@ export class CreditPacksController {
         { $ref: getSchemaPath(ApiResponseDto) },
         {
           properties: {
-            data: { $ref: getSchemaPath(CreditPackResponseDto) }
-          }
-        }
-      ]
-    }
+            data: { $ref: getSchemaPath(CreditPackResponseDto) },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 400,
@@ -508,11 +513,11 @@ export class CreditPacksController {
           properties: {
             success: { example: false },
             message: { example: 'Ya existe un pack con ese ID' },
-            data: { example: null }
-          }
-        }
-      ]
-    }
+            data: { example: null },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 422,
@@ -524,30 +529,35 @@ export class CreditPacksController {
           properties: {
             success: { example: false },
             message: { example: 'Validation failed' },
-            data: { 
+            data: {
               example: {
                 errors: [
                   { field: 'price', message: 'price must be a positive number' },
-                  { field: 'packId', message: 'packId must be longer than or equal to 3 characters' }
-                ]
-              }
-            }
-          }
-        }
-      ]
-    }
+                  {
+                    field: 'packId',
+                    message: 'packId must be longer than or equal to 3 characters',
+                  },
+                ],
+              },
+            },
+          },
+        },
+      ],
+    },
   })
   @HttpCode(HttpStatus.CREATED)
   async createPack(@Body() createPackData: CreateCreditPackDto): Promise<ApiResponseDto<any>> {
     try {
-      const pack = await this.creditPacksService.createCreditPack(createPackData as ServiceCreateDto);
-      
+      const pack = await this.creditPacksService.createCreditPack(
+        createPackData as ServiceCreateDto,
+      );
+
       return {
         success: true,
         data: pack,
         message: 'Pack de créditos creado exitosamente',
         timestamp: new Date().toISOString(),
-        path: '/api/credit-packs'
+        path: '/api/credit-packs',
       };
     } catch (error: any) {
       if (error.code === 11000) {
@@ -572,7 +582,7 @@ export class CreditPacksController {
   @ApiParam({
     name: 'packId',
     description: 'Unique identifier of the credit pack to update',
-    example: 'premium-pack-2024'
+    example: 'premium-pack-2024',
   })
   @ApiBody({
     type: UpdateCreditPackDto,
@@ -582,16 +592,16 @@ export class CreditPacksController {
         summary: 'Update pack price',
         value: {
           price: 22.99,
-          bonusCredits: 600
-        }
+          bonusCredits: 600,
+        },
       },
       'Update Status': {
         summary: 'Deactivate pack',
         value: {
-          isActive: false
-        }
-      }
-    }
+          isActive: false,
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 200,
@@ -601,11 +611,11 @@ export class CreditPacksController {
         { $ref: getSchemaPath(ApiResponseDto) },
         {
           properties: {
-            data: { $ref: getSchemaPath(CreditPackResponseDto) }
-          }
-        }
-      ]
-    }
+            data: { $ref: getSchemaPath(CreditPackResponseDto) },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 404,
@@ -617,24 +627,27 @@ export class CreditPacksController {
           properties: {
             success: { example: false },
             message: { example: 'Plantilla de juego no encontrada' },
-            data: { example: null }
-          }
-        }
-      ]
-    }
+            data: { example: null },
+          },
+        },
+      ],
+    },
   })
   async updatePack(
     @Param('packId') packId: string,
-    @Body() updateData: UpdateCreditPackDto
+    @Body() updateData: UpdateCreditPackDto,
   ): Promise<ApiResponseDto<any>> {
-    const pack = await this.creditPacksService.updateCreditPack(packId, updateData as Partial<ServiceCreateDto>);
-    
+    const pack = await this.creditPacksService.updateCreditPack(
+      packId,
+      updateData as Partial<ServiceCreateDto>,
+    );
+
     return {
       success: true,
       data: pack,
       message: 'Pack de créditos actualizado exitosamente',
       timestamp: new Date().toISOString(),
-      path: `/api/credit-packs/${packId}`
+      path: `/api/credit-packs/${packId}`,
     };
   }
 
@@ -655,7 +668,7 @@ export class CreditPacksController {
   @ApiParam({
     name: 'packId',
     description: 'Unique identifier of the credit pack',
-    example: 'premium-pack-2024'
+    example: 'premium-pack-2024',
   })
   @ApiResponse({
     status: 200,
@@ -666,25 +679,25 @@ export class CreditPacksController {
         {
           properties: {
             data: { $ref: getSchemaPath(CreditPackResponseDto) },
-            message: { example: 'Pack activado exitosamente' }
-          }
-        }
-      ]
-    }
+            message: { example: 'Pack activado exitosamente' },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 404,
-    description: 'Credit pack not found'
+    description: 'Credit pack not found',
   })
   async togglePackActive(@Param('packId') packId: string): Promise<ApiResponseDto<any>> {
     const pack = await this.creditPacksService.toggleActive(packId);
-    
+
     return {
       success: true,
       data: pack,
       message: `Pack ${pack.isActive ? 'activado' : 'desactivado'} exitosamente`,
       timestamp: new Date().toISOString(),
-      path: `/api/credit-packs/${packId}/toggle`
+      path: `/api/credit-packs/${packId}/toggle`,
     };
   }
 
@@ -706,7 +719,7 @@ export class CreditPacksController {
   @ApiParam({
     name: 'packId',
     description: 'Unique identifier of the credit pack',
-    example: 'premium-pack-2024'
+    example: 'premium-pack-2024',
   })
   @ApiResponse({
     status: 200,
@@ -716,25 +729,25 @@ export class CreditPacksController {
         { $ref: getSchemaPath(ApiResponseDto) },
         {
           properties: {
-            data: { $ref: getSchemaPath(CreditPackStatsDto) }
-          }
-        }
-      ]
-    }
+            data: { $ref: getSchemaPath(CreditPackStatsDto) },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 404,
-    description: 'Credit pack not found'
+    description: 'Credit pack not found',
   })
   async getPackStats(@Param('packId') packId: string): Promise<ApiResponseDto<CreditPackStatsDto>> {
     const stats = await this.creditPacksService.getPackStats(packId);
-    
+
     return {
       success: true,
       data: stats,
       message: 'Estadísticas del pack obtenidas exitosamente',
       timestamp: new Date().toISOString(),
-      path: `/api/credit-packs/${packId}/stats`
+      path: `/api/credit-packs/${packId}/stats`,
     };
   }
 
@@ -761,21 +774,21 @@ export class CreditPacksController {
         { $ref: getSchemaPath(ApiResponseDto) },
         {
           properties: {
-            data: { $ref: getSchemaPath(GlobalStatsDto) }
-          }
-        }
-      ]
-    }
+            data: { $ref: getSchemaPath(GlobalStatsDto) },
+          },
+        },
+      ],
+    },
   })
   async getGlobalStats(): Promise<ApiResponseDto<GlobalStatsDto>> {
     const stats = await this.creditPacksService.getGlobalStats();
-    
+
     return {
       success: true,
       data: stats,
       message: 'Estadísticas globales obtenidas exitosamente',
       timestamp: new Date().toISOString(),
-      path: '/api/credit-packs/stats/global'
+      path: '/api/credit-packs/stats/global',
     };
   }
 
@@ -807,11 +820,11 @@ export class CreditPacksController {
         {
           properties: {
             data: { example: null },
-            message: { example: 'Packs de créditos iniciales creados exitosamente' }
-          }
-        }
-      ]
-    }
+            message: { example: 'Packs de créditos iniciales creados exitosamente' },
+          },
+        },
+      ],
+    },
   })
   @ApiResponse({
     status: 200,
@@ -821,22 +834,22 @@ export class CreditPacksController {
         { $ref: getSchemaPath(ApiResponseDto) },
         {
           properties: {
-            message: { example: 'Los packs de créditos ya están inicializados' }
-          }
-        }
-      ]
-    }
+            message: { example: 'Los packs de créditos ya están inicializados' },
+          },
+        },
+      ],
+    },
   })
   @HttpCode(HttpStatus.CREATED)
   async seedInitialPacks(): Promise<ApiResponseDto<null>> {
     await this.creditPacksService.seedInitialPacks();
-    
+
     return {
       success: true,
       data: null,
       message: 'Packs de créditos iniciales creados exitosamente',
       timestamp: new Date().toISOString(),
-      path: '/api/credit-packs/seed/initial'
+      path: '/api/credit-packs/seed/initial',
     };
   }
-} 
+}

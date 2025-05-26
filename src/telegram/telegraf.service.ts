@@ -49,7 +49,7 @@ export class TelegrafService {
 
       switch (status) {
         case 'confirmed':
-          message = 
+          message =
             `<b>¡Pago Confirmado!</b>\n\n` +
             `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: $${pack.price} ${pack.currency}\n` +
@@ -58,7 +58,7 @@ export class TelegrafService {
           break;
 
         case 'expired':
-          message = 
+          message =
             `⏱️ <b>Pago Expirado</b>\n\n` +
             `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: $${pack.price} ${pack.currency}\n` +
@@ -67,13 +67,13 @@ export class TelegrafService {
             `Puedes generar un nuevo enlace de pago usando el comando /buy`;
           keyboard = {
             inline_keyboard: [
-              [{ text: '🛍️ Realizar nueva compra', callback_data: 'new_purchase' }]
-            ]
+              [{ text: '🛍️ Realizar nueva compra', callback_data: 'new_purchase' }],
+            ],
           };
           break;
 
         case 'cancelled':
-          message = 
+          message =
             `<b>Pago Cancelado</b>\n\n` +
             `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: $${pack.price} ${pack.currency}\n` +
@@ -82,14 +82,14 @@ export class TelegrafService {
             `Puedes generar un nuevo enlace de pago usando el comando /buy`;
           keyboard = {
             inline_keyboard: [
-              [{ text: '🛍️ Realizar nueva compra', callback_data: 'new_purchase' }]
-            ]
+              [{ text: '🛍️ Realizar nueva compra', callback_data: 'new_purchase' }],
+            ],
           };
           break;
 
         case 'rejected':
         case 'error':
-          message = 
+          message =
             `⚠️ <b>Error en el Pago</b>\n\n` +
             `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: $${pack.price} ${pack.currency}\n` +
@@ -100,39 +100,26 @@ export class TelegrafService {
             inline_keyboard: [
               [{ text: '🔄 Reintentar pago', callback_data: `retry_payment_${paymentId}` }],
               [{ text: '🛍️ Nueva compra', callback_data: 'new_purchase' }],
-              [{ text: '📋 Ver pagos fallidos', callback_data: 'view_failed_payments' }]
-            ]
+              [{ text: '📋 Ver pagos fallidos', callback_data: 'view_failed_payments' }],
+            ],
           };
           break;
 
         case 'failed':
-          // Verificar si hay información de devolución
-          const refundInfo = await this.payments.getRefundStatus(paymentId);
-          let refundText = '';
-          
-          if (refundInfo.hasRefund) {
-            if (refundInfo.refundProcessed) {
-              refundText = `\n💰 <b>Devolución procesada exitosamente</b>\nID: ${refundInfo.refundId}`;
-            } else if (refundInfo.refundFailed) {
-              refundText = `\n⚠️ <b>Error en devolución:</b> ${refundInfo.refundFailedReason}\nContacta soporte para asistencia.`;
-            } else {
-              refundText = `\n⏳ <b>Devolución en proceso...</b>\nRecibirás el reembolso en 24-48 horas.`;
-            }
-          }
-
-          message = 
+          message =
             `❌ <b>Pago Fallido</b>\n\n` +
             `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: $${pack.price} ${pack.currency}\n` +
             `🎫 Créditos: ${pack.amount + (pack.bonusCredits || 0)}\n\n` +
-            `El pago ha fallado definitivamente.${refundText}\n\n` +
+            `El pago ha fallado definitivamente.\n` +
+            `Si el pago fue procesado en MercadoPago, contacta soporte.\n\n` +
             `Puedes reintentar con un nuevo pago usando /failed_payments`;
           keyboard = {
             inline_keyboard: [
               [{ text: '🔄 Reintentar pago', callback_data: `retry_payment_${paymentId}` }],
               [{ text: '🛍️ Nueva compra', callback_data: 'new_purchase' }],
-              [{ text: '📋 Ver pagos fallidos', callback_data: 'view_failed_payments' }]
-            ]
+              [{ text: '📋 Ver pagos fallidos', callback_data: 'view_failed_payments' }],
+            ],
           };
           break;
       }
@@ -145,8 +132,8 @@ export class TelegrafService {
           message,
           {
             parse_mode: 'HTML',
-            reply_markup: keyboard
-          }
+            reply_markup: keyboard,
+          },
         );
       }
     } catch (error) {
@@ -163,10 +150,10 @@ export class TelegrafService {
       }
 
       await this.bot.telegram.sendMessage(user.telegramId, message, {
-        parse_mode: 'HTML'
+        parse_mode: 'HTML',
       });
     } catch (error) {
       this.logger.error(`Error enviando notificación: ${error.message}`, error.stack);
     }
   }
-} 
+}

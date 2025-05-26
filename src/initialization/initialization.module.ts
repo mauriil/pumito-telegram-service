@@ -6,4 +6,4 @@ import { InitializationService } from './initialization.service';
   imports: [DbModule],
   providers: [InitializationService],
 })
-export class InitializationModule {} 
+export class InitializationModule {}

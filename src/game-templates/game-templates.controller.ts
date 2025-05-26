@@ -1,15 +1,15 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Put, 
-  Param, 
-  Body, 
-  Query, 
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Param,
+  Body,
+  Query,
   NotFoundException,
   HttpStatus,
   HttpCode,
-  BadRequestException 
+  BadRequestException,
 } from '@nestjs/common';
 import { GameTemplatesService, CreateGameTemplateDto } from '../db/game-templates.service';
 import { ApiTags } from '@nestjs/swagger';
@@ -17,9 +17,7 @@ import { ApiTags } from '@nestjs/swagger';
 @ApiTags('Game Templates')
 @Controller('game-templates')
 export class GameTemplatesController {
-  constructor(
-    private readonly gameTemplatesService: GameTemplatesService,
-  ) {}
+  constructor(private readonly gameTemplatesService: GameTemplatesService) {}
 
   /**
    * Obtener todos los juegos disponibles (formato para frontend)
@@ -65,7 +63,7 @@ export class GameTemplatesController {
     return {
       success: true,
       data: transformedGames,
-      message: 'Juegos disponibles obtenidos exitosamente'
+      message: 'Juegos disponibles obtenidos exitosamente',
     };
   }
 
@@ -91,7 +89,7 @@ export class GameTemplatesController {
     return {
       success: true,
       data: transformedGames,
-      message: 'Juegos activos obtenidos exitosamente'
+      message: 'Juegos activos obtenidos exitosamente',
     };
   }
 
@@ -101,7 +99,7 @@ export class GameTemplatesController {
   @Get(':gameId')
   async getGameById(@Param('gameId') gameId: string) {
     const game = await this.gameTemplatesService.findByGameId(gameId);
-    
+
     if (!game) {
       throw new NotFoundException('Juego no encontrado');
     }
@@ -128,7 +126,7 @@ export class GameTemplatesController {
         maxPlayers: game.maxPlayers,
         gameConfig: game.gameConfig,
       },
-      message: 'Detalles del juego obtenidos exitosamente'
+      message: 'Detalles del juego obtenidos exitosamente',
     };
   }
 
@@ -154,7 +152,7 @@ export class GameTemplatesController {
     return {
       success: true,
       data: transformedGames,
-      message: `Juegos de categoría '${category}' obtenidos exitosamente`
+      message: `Juegos de categoría '${category}' obtenidos exitosamente`,
     };
   }
 
@@ -180,7 +178,7 @@ export class GameTemplatesController {
     return {
       success: true,
       data: transformedGames,
-      message: `Resultados de búsqueda para '${query}'`
+      message: `Resultados de búsqueda para '${query}'`,
     };
   }
 
@@ -192,11 +190,11 @@ export class GameTemplatesController {
   async createGame(@Body() createGameData: CreateGameTemplateDto) {
     try {
       const game = await this.gameTemplatesService.createGameTemplate(createGameData);
-      
+
       return {
         success: true,
         data: game,
-        message: 'Juego creado exitosamente'
+        message: 'Juego creado exitosamente',
       };
     } catch (error) {
       if (error.code === 11000) {
@@ -212,14 +210,14 @@ export class GameTemplatesController {
   @Put(':gameId')
   async updateGame(
     @Param('gameId') gameId: string,
-    @Body() updateData: Partial<CreateGameTemplateDto>
+    @Body() updateData: Partial<CreateGameTemplateDto>,
   ) {
     const game = await this.gameTemplatesService.updateGameTemplate(gameId, updateData);
-    
+
     return {
       success: true,
       data: game,
-      message: 'Juego actualizado exitosamente'
+      message: 'Juego actualizado exitosamente',
     };
   }
 
@@ -229,11 +227,11 @@ export class GameTemplatesController {
   @Put(':gameId/toggle')
   async toggleGameActive(@Param('gameId') gameId: string) {
     const game = await this.gameTemplatesService.toggleActive(gameId);
-    
+
     return {
       success: true,
       data: game,
-      message: `Juego ${game.isActive ? 'activado' : 'desactivado'} exitosamente`
+      message: `Juego ${game.isActive ? 'activado' : 'desactivado'} exitosamente`,
     };
   }
 
@@ -243,11 +241,11 @@ export class GameTemplatesController {
   @Get(':gameId/stats')
   async getGameStats(@Param('gameId') gameId: string) {
     const stats = await this.gameTemplatesService.getGameStats(gameId);
-    
+
     return {
       success: true,
       data: stats,
-      message: 'Estadísticas del juego obtenidas exitosamente'
+      message: 'Estadísticas del juego obtenidas exitosamente',
     };
   }
 
@@ -258,10 +256,10 @@ export class GameTemplatesController {
   @HttpCode(HttpStatus.CREATED)
   async seedInitialGames() {
     await this.gameTemplatesService.seedInitialGames();
-    
+
     return {
       success: true,
-      message: 'Juegos iniciales creados exitosamente'
+      message: 'Juegos iniciales creados exitosamente',
     };
   }
-} 
+}

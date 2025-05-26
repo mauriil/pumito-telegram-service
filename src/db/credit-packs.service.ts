@@ -53,48 +53,46 @@ export class CreditPacksService {
   }
 
   async findActivePacks(): Promise<CreditPackDocument[]> {
-    return this.creditPackModel.find({ 
-      isActive: true,
-      $or: [
-        { validUntil: { $exists: false } },
-        { validUntil: { $gte: new Date() } }
-      ]
-    }).sort({ sortOrder: 1, price: 1 });
+    return this.creditPackModel
+      .find({
+        isActive: true,
+        $or: [{ validUntil: { $exists: false } }, { validUntil: { $gte: new Date() } }],
+      })
+      .sort({ sortOrder: 1, price: 1 });
   }
 
   async findByCategory(category: string): Promise<CreditPackDocument[]> {
-    return this.creditPackModel.find({ 
-      category, 
-      isActive: true,
-      $or: [
-        { validUntil: { $exists: false } },
-        { validUntil: { $gte: new Date() } }
-      ]
-    }).sort({ sortOrder: 1, price: 1 });
+    return this.creditPackModel
+      .find({
+        category,
+        isActive: true,
+        $or: [{ validUntil: { $exists: false } }, { validUntil: { $gte: new Date() } }],
+      })
+      .sort({ sortOrder: 1, price: 1 });
   }
 
   async findPopularPacks(): Promise<CreditPackDocument[]> {
-    return this.creditPackModel.find({ 
-      popular: true, 
-      isActive: true,
-      $or: [
-        { validUntil: { $exists: false } },
-        { validUntil: { $gte: new Date() } }
-      ]
-    }).sort({ sortOrder: 1, price: 1 });
+    return this.creditPackModel
+      .find({
+        popular: true,
+        isActive: true,
+        $or: [{ validUntil: { $exists: false } }, { validUntil: { $gte: new Date() } }],
+      })
+      .sort({ sortOrder: 1, price: 1 });
   }
 
-  async updateCreditPack(packId: string, updateData: Partial<CreateCreditPackDto>): Promise<CreditPackDocument> {
-    const creditPack = await this.creditPackModel.findOneAndUpdate(
-      { packId },
-      updateData,
-      { new: true }
-    );
-    
+  async updateCreditPack(
+    packId: string,
+    updateData: Partial<CreateCreditPackDto>,
+  ): Promise<CreditPackDocument> {
+    const creditPack = await this.creditPackModel.findOneAndUpdate({ packId }, updateData, {
+      new: true,
+    });
+
     if (!creditPack) {
       throw new NotFoundException('Pack de créditos no encontrado');
     }
-    
+
     return creditPack;
   }
 
@@ -114,9 +112,9 @@ export class CreditPacksService {
       {
         $inc: {
           totalPurchases: 1,
-          totalRevenue: price
-        }
-      }
+          totalRevenue: price,
+        },
+      },
     );
   }
 
@@ -131,8 +129,8 @@ export class CreditPacksService {
       title: creditPack.title,
       totalPurchases: creditPack.totalPurchases,
       totalRevenue: creditPack.totalRevenue,
-      averageRevenuePerPurchase: creditPack.totalPurchases > 0 ? 
-        (creditPack.totalRevenue / creditPack.totalPurchases) : 0,
+      averageRevenuePerPurchase:
+        creditPack.totalPurchases > 0 ? creditPack.totalRevenue / creditPack.totalPurchases : 0,
       isActive: creditPack.isActive,
       popular: creditPack.popular,
     };
@@ -140,13 +138,15 @@ export class CreditPacksService {
 
   async getGlobalStats(): Promise<any> {
     const allPacks = await this.creditPackModel.find();
-    
+
     const totalPacks = allPacks.length;
     const activePacks = allPacks.filter(pack => pack.isActive).length;
     const totalRevenue = allPacks.reduce((sum, pack) => sum + pack.totalRevenue, 0);
     const totalPurchases = allPacks.reduce((sum, pack) => sum + pack.totalPurchases, 0);
-    const averagePackPrice = allPacks.length > 0 ? 
-      allPacks.reduce((sum, pack) => sum + pack.price, 0) / allPacks.length : 0;
+    const averagePackPrice =
+      allPacks.length > 0
+        ? allPacks.reduce((sum, pack) => sum + pack.price, 0) / allPacks.length
+        : 0;
 
     return {
       totalPacks,
@@ -161,7 +161,7 @@ export class CreditPacksService {
   // Transformar al formato que espera el frontend (incluyendo link de pago)
   async getPacksForFrontend(includePaymentLinks = true): Promise<any[]> {
     const packs = await this.findActivePacks();
-    
+
     return packs.map(pack => {
       const result: any = {
         id: pack.packId,
@@ -214,7 +214,7 @@ export class CreditPacksService {
         color: '#4CAF50',
         category: 'starter',
         currency: 'USD',
-        paymentMethods: ['stripe', 'paypal', 'mercadopago']
+        paymentMethods: ['stripe', 'paypal', 'mercadopago'],
       },
       {
         packId: 'popular-pack',
@@ -230,7 +230,7 @@ export class CreditPacksService {
         color: '#FF5722',
         category: 'value',
         currency: 'USD',
-        paymentMethods: ['stripe', 'paypal', 'mercadopago']
+        paymentMethods: ['stripe', 'paypal', 'mercadopago'],
       },
       {
         packId: 'premium-pack',
@@ -246,7 +246,7 @@ export class CreditPacksService {
         color: '#9C27B0',
         category: 'premium',
         currency: 'USD',
-        paymentMethods: ['stripe', 'paypal', 'mercadopago']
+        paymentMethods: ['stripe', 'paypal', 'mercadopago'],
       },
       {
         packId: 'mega-pack',
@@ -262,7 +262,7 @@ export class CreditPacksService {
         color: '#2196F3',
         category: 'premium',
         currency: 'USD',
-        paymentMethods: ['stripe', 'paypal', 'mercadopago']
+        paymentMethods: ['stripe', 'paypal', 'mercadopago'],
       },
       {
         packId: 'starter-offer',
@@ -280,8 +280,8 @@ export class CreditPacksService {
         category: 'offer',
         currency: 'USD',
         isLimitedOffer: true,
-        paymentMethods: ['stripe', 'paypal', 'mercadopago']
-      }
+        paymentMethods: ['stripe', 'paypal', 'mercadopago'],
+      },
     ];
 
     try {
@@ -291,4 +291,4 @@ export class CreditPacksService {
       this.logger.error('Error creando packs de créditos iniciales', error);
     }
   }
-} 
+}

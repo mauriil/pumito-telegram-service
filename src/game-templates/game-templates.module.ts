@@ -6,4 +6,4 @@ import { GameTemplatesController } from './game-templates.controller';
   imports: [DbModule],
   controllers: [GameTemplatesController],
 })
-export class GameTemplatesModule {} 
+export class GameTemplatesModule {}

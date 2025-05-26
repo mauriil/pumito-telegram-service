@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { Game, GameDocument, GameStatus, GameType } from './schemas/game.schema';
 import { User, UserDocument } from './schemas/user.schema';
 import { GameTemplate, GameTemplateDocument } from './schemas/game-template.schema';
@@ -82,15 +82,12 @@ export class GamesService {
     const savedGame = await game.save();
 
     // Incrementar estadísticas de la plantilla
-    await this.gameTemplateModel.findByIdAndUpdate(
-      gameTemplate._id,
-      {
-        $inc: {
-          totalGamesPlayed: 1,
-          totalPlayersParticipated: opponent ? 2 : 1
-        }
-      }
-    );
+    await this.gameTemplateModel.findByIdAndUpdate(gameTemplate._id, {
+      $inc: {
+        totalGamesPlayed: 1,
+        totalPlayersParticipated: opponent ? 2 : 1,
+      },
+    });
 
     return savedGame;
   }
@@ -119,11 +116,12 @@ export class GamesService {
   }
 
   async getGameById(gameId: string): Promise<GameDocument> {
-    const game = await this.gameModel.findById(gameId)
+    const game = await this.gameModel
+      .findById(gameId)
       .populate('playerId', 'telegramId username firstName')
       .populate('opponentId', 'telegramId username firstName')
       .populate('gameTemplateId');
-    
+
     if (!game) {
       throw new NotFoundException('Juego no encontrado');
     }
@@ -134,10 +132,7 @@ export class GamesService {
   async getGamesByPlayer(telegramId: number, limit = 10, offset = 0): Promise<GameDocument[]> {
     return this.gameModel
       .find({
-        $or: [
-          { playerTelegramId: telegramId },
-          { opponentTelegramId: telegramId }
-        ]
+        $or: [{ playerTelegramId: telegramId }, { opponentTelegramId: telegramId }],
       })
       .populate('playerId', 'telegramId username firstName')
       .populate('opponentId', 'telegramId username firstName')
@@ -150,11 +145,8 @@ export class GamesService {
   async getActiveGames(telegramId: number): Promise<GameDocument[]> {
     return this.gameModel
       .find({
-        $or: [
-          { playerTelegramId: telegramId },
-          { opponentTelegramId: telegramId }
-        ],
-        status: GameStatus.STARTED
+        $or: [{ playerTelegramId: telegramId }, { opponentTelegramId: telegramId }],
+        status: GameStatus.STARTED,
       })
       .populate('playerId', 'telegramId username firstName')
       .populate('opponentId', 'telegramId username firstName')
@@ -176,7 +168,11 @@ export class GamesService {
     }
   }
 
-  private async updatePlayerStats(telegramId: number, game: GameDocument, isMainPlayer: boolean): Promise<void> {
+  private async updatePlayerStats(
+    telegramId: number,
+    game: GameDocument,
+    isMainPlayer: boolean,
+  ): Promise<void> {
     const user = await this.userModel.findOne({ telegramId });
     if (!user) return;
 
@@ -200,7 +196,7 @@ export class GamesService {
       // Comparar puntuaciones
       const playerScore = isMainPlayer ? game.playerScore : game.opponentScore;
       const opponentScore = isMainPlayer ? game.opponentScore : game.playerScore;
-      
+
       if (playerScore > opponentScore) {
         isWin = true;
       } else if (playerScore < opponentScore) {
@@ -211,15 +207,16 @@ export class GamesService {
     }
 
     // Calcular créditos ganados/perdidos
-    const creditsChange = isMainPlayer ? (game.creditsWon || 0) - (game.creditsWagered || 0) : 
-                         -(game.creditsWon || 0);
+    const creditsChange = isMainPlayer
+      ? (game.creditsWon || 0) - (game.creditsWagered || 0)
+      : -(game.creditsWon || 0);
 
     // Actualizar estadísticas generales
     const gameStatsUpdate: any = {
       $inc: {
         'gameStats.totalGames': 1,
         'gameStats.totalPlayTime': game.duration || 0,
-      }
+      },
     };
 
     if (isWin) {
@@ -251,10 +248,13 @@ export class GamesService {
     // Actualizar racha máxima si es necesario
     if (isWin) {
       const updatedUser = await this.userModel.findOne({ telegramId });
-      if (updatedUser && updatedUser.gameStats.currentWinStreak > updatedUser.gameStats.longestWinStreak) {
+      if (
+        updatedUser &&
+        updatedUser.gameStats.currentWinStreak > updatedUser.gameStats.longestWinStreak
+      ) {
         await this.userModel.findOneAndUpdate(
           { telegramId },
-          { $set: { 'gameStats.longestWinStreak': updatedUser.gameStats.currentWinStreak } }
+          { $set: { 'gameStats.longestWinStreak': updatedUser.gameStats.currentWinStreak } },
         );
       }
     }
@@ -267,11 +267,11 @@ export class GamesService {
   }
 
   private async updateOpponentStats(
-    playerTelegramId: number, 
-    opponentTelegramId: number, 
-    isWin: boolean, 
-    isLoss: boolean, 
-    isDraw: boolean
+    playerTelegramId: number,
+    opponentTelegramId: number,
+    isWin: boolean,
+    isLoss: boolean,
+    isDraw: boolean,
   ): Promise<void> {
     const user = await this.userModel.findOne({ telegramId: playerTelegramId });
     if (!user) return;
@@ -281,7 +281,7 @@ export class GamesService {
 
     // Buscar si ya existe estadística contra este oponente
     const existingOpponentIndex = user.opponentStats.findIndex(
-      stat => stat.opponentTelegramId === opponentTelegramId
+      stat => stat.opponentTelegramId === opponentTelegramId,
     );
 
     if (existingOpponentIndex >= 0) {
@@ -293,7 +293,7 @@ export class GamesService {
         $set: {
           [`opponentStats.${existingOpponentIndex}.lastPlayedAt`]: new Date(),
           [`opponentStats.${existingOpponentIndex}.opponentUsername`]: opponentUsername,
-        }
+        },
       };
 
       if (isWin) {
@@ -319,8 +319,8 @@ export class GamesService {
 
       await this.userModel.findOneAndUpdate(
         { telegramId: playerTelegramId },
-        { $push: { opponentStats: newOpponentStat } }
+        { $push: { opponentStats: newOpponentStat } },
       );
     }
   }
-} 
+}

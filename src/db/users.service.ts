@@ -11,7 +11,12 @@ export class UsersService {
 
   constructor(@InjectModel(User.name) private readonly userModel: Model<UserDocument>) {}
 
-  async findAll(limit: number, offset: number, status: string, search: string): Promise<UserDocument[]> {
+  async findAll(
+    limit: number,
+    offset: number,
+    status: string,
+    search: string,
+  ): Promise<UserDocument[]> {
     const query: any = {};
     if (status) query.status = status;
     if (search) query.username = { $regex: search, $options: 'i' };
@@ -49,7 +54,7 @@ export class UsersService {
 
   async canMakePurchase(userId: string): Promise<{ can: boolean; reason?: string }> {
     const user = await this.userModel.findById(userId);
-    
+
     if (!user) {
       return { can: false, reason: 'Usuario no encontrado' };
     }
@@ -61,10 +66,10 @@ export class UsersService {
     // Verificar límite diario de compras
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const purchasesToday = await this.userModel.countDocuments({
       _id: userId,
-      'purchases.createdAt': { $gte: today }
+      'purchases.createdAt': { $gte: today },
     });
 
     if (purchasesToday >= this.MAX_DAILY_PURCHASES) {
@@ -90,16 +95,18 @@ export class UsersService {
 
     // Calcular estadísticas adicionales
     const totalGames = user.gameStats.totalGames || 0;
-    const winRate = totalGames > 0 ? ((user.gameStats.gamesWon || 0) / totalGames * 100) : 0;
-    const lossRate = totalGames > 0 ? ((user.gameStats.gamesLost || 0) / totalGames * 100) : 0;
-    const drawRate = totalGames > 0 ? ((user.gameStats.gamesDrawn || 0) / totalGames * 100) : 0;
-    const abandonRate = totalGames > 0 ? ((user.gameStats.gamesAbandoned || 0) / totalGames * 100) : 0;
+    const winRate = totalGames > 0 ? ((user.gameStats.gamesWon || 0) / totalGames) * 100 : 0;
+    const lossRate = totalGames > 0 ? ((user.gameStats.gamesLost || 0) / totalGames) * 100 : 0;
+    const drawRate = totalGames > 0 ? ((user.gameStats.gamesDrawn || 0) / totalGames) * 100 : 0;
+    const abandonRate =
+      totalGames > 0 ? ((user.gameStats.gamesAbandoned || 0) / totalGames) * 100 : 0;
 
     // Calcular tiempo promedio de juego
     const avgGameDuration = totalGames > 0 ? (user.gameStats.totalPlayTime || 0) / totalGames : 0;
 
     // Calcular balance neto de créditos en juegos
-    const netCreditsFromGames = (user.gameStats.totalCreditsWon || 0) - (user.gameStats.totalCreditsLost || 0);
+    const netCreditsFromGames =
+      (user.gameStats.totalCreditsWon || 0) - (user.gameStats.totalCreditsLost || 0);
 
     // Encontrar al oponente más frecuente
     let mostFrequentOpponent = null;
@@ -112,8 +119,10 @@ export class UsersService {
         wins: sortedOpponents[0].wins,
         losses: sortedOpponents[0].losses,
         draws: sortedOpponents[0].draws,
-        winRateAgainst: sortedOpponents[0].gamesPlayed > 0 ? 
-          (sortedOpponents[0].wins / sortedOpponents[0].gamesPlayed * 100) : 0
+        winRateAgainst:
+          sortedOpponents[0].gamesPlayed > 0
+            ? (sortedOpponents[0].wins / sortedOpponents[0].gamesPlayed) * 100
+            : 0,
       };
     }
 
@@ -128,8 +137,9 @@ export class UsersService {
     }
 
     // Calcular días desde el registro
-    const daysSinceRegistration = user.registrationDate ? 
-      Math.floor((new Date().getTime() - user.registrationDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+    const daysSinceRegistration = user.registrationDate
+      ? Math.floor((new Date().getTime() - user.registrationDate.getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
 
     return {
       // Datos básicos del usuario
@@ -141,12 +151,12 @@ export class UsersService {
       language: user.language,
       isPremium: user.isPremium,
       premiumExpiresAt: user.premiumExpiresAt,
-      
+
       // Datos financieros
       balance: user.balance,
       credits: user.credits,
       totalPurchases: user.totalPurchases,
-      
+
       // Estadísticas de juego calculadas
       gameStatistics: {
         // Estadísticas básicas
@@ -155,40 +165,43 @@ export class UsersService {
         gamesLost: user.gameStats.gamesLost || 0,
         gamesDrawn: user.gameStats.gamesDrawn || 0,
         gamesAbandoned: user.gameStats.gamesAbandoned || 0,
-        
+
         // Porcentajes
         winRate: Math.round(winRate * 100) / 100,
         lossRate: Math.round(lossRate * 100) / 100,
         drawRate: Math.round(drawRate * 100) / 100,
         abandonRate: Math.round(abandonRate * 100) / 100,
-        
+
         // Rachas
         currentWinStreak: user.gameStats.currentWinStreak || 0,
         longestWinStreak: user.gameStats.longestWinStreak || 0,
-        
+
         // Tiempo
         totalPlayTime: user.gameStats.totalPlayTime || 0,
         avgGameDuration: Math.round(avgGameDuration),
         totalPlayTimeFormatted: this.formatDuration(user.gameStats.totalPlayTime || 0),
         avgGameDurationFormatted: this.formatDuration(avgGameDuration),
-        
+
         // Créditos
         totalCreditsWon: user.gameStats.totalCreditsWon || 0,
         totalCreditsLost: user.gameStats.totalCreditsLost || 0,
         netCreditsFromGames,
-        
+
         // Rating y ranking
         rating: user.gameStats.rating || 1000,
         rankedGames: user.gameStats.rankedGames || 0,
         level,
       },
-      
+
       // Datos de oponentes
       opponentStatistics: {
         totalOpponents: user.opponentStats.length,
         mostFrequentOpponent,
         recentOpponents: user.opponentStats
-          .sort((a, b) => new Date(b.lastPlayedAt || 0).getTime() - new Date(a.lastPlayedAt || 0).getTime())
+          .sort(
+            (a, b) =>
+              new Date(b.lastPlayedAt || 0).getTime() - new Date(a.lastPlayedAt || 0).getTime(),
+          )
           .slice(0, 5)
           .map(opponent => ({
             telegramId: opponent.opponentTelegramId,
@@ -197,12 +210,14 @@ export class UsersService {
             wins: opponent.wins,
             losses: opponent.losses,
             draws: opponent.draws,
-            winRate: opponent.gamesPlayed > 0 ? 
-              Math.round((opponent.wins / opponent.gamesPlayed * 100) * 100) / 100 : 0,
-            lastPlayedAt: opponent.lastPlayedAt
+            winRate:
+              opponent.gamesPlayed > 0
+                ? Math.round((opponent.wins / opponent.gamesPlayed) * 100 * 100) / 100
+                : 0,
+            lastPlayedAt: opponent.lastPlayedAt,
           })),
       },
-      
+
       // Metadatos
       metadata: {
         registrationDate: user.registrationDate,
@@ -211,7 +226,7 @@ export class UsersService {
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
-      
+
       // Flags y estados calculados
       flags: {
         isNewUser: daysSinceRegistration <= 7,
@@ -220,7 +235,7 @@ export class UsersService {
         isOnLossStreak: this.isOnLossStreak(user),
         canPlayRanked: totalGames >= 10,
         hasPlayedRecently: this.hasPlayedRecently(user),
-      }
+      },
     };
   }
 
@@ -252,9 +267,6 @@ export class UsersService {
   }
 
   async updateLastLogin(telegramId: number): Promise<void> {
-    await this.userModel.findOneAndUpdate(
-      { telegramId },
-      { lastLoginAt: new Date() }
-    );
+    await this.userModel.findOneAndUpdate({ telegramId }, { lastLoginAt: new Date() });
   }
 }

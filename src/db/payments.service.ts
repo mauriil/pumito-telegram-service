@@ -23,64 +23,71 @@ export class PaymentsService {
   }
 
   private async startPaymentCleaner() {
-    setInterval(async () => {
-      try {
-        const expiredTime = new Date(Date.now() - this.PAYMENT_TIMEOUT);
-        const expiredPayments = await this.paymentModel.find({
-          status: 'pending',
-          createdAt: { $lt: expiredTime }
-        });
-
-        for (const payment of expiredPayments) {
-          await this.paymentModel.findByIdAndUpdate(payment._id, {
-            status: 'expired',
-            expiredAt: new Date(),
-            statusDetail: 'Pago expirado por tiempo de espera'
+    setInterval(
+      async () => {
+        try {
+          const expiredTime = new Date(Date.now() - this.PAYMENT_TIMEOUT);
+          const expiredPayments = await this.paymentModel.find({
+            status: 'pending',
+            createdAt: { $lt: expiredTime },
           });
-          this.logger.log(`Pago ${payment._id} marcado como expirado`);
-        }
 
-        // También limpiar pagos que están en error por mucho tiempo
-        const errorTime = new Date(Date.now() - (this.PAYMENT_TIMEOUT * 2)); // 1 hora
-        const errorPayments = await this.paymentModel.find({
-          status: 'error',
-          errorAt: { $lt: errorTime }
-        });
+          for (const payment of expiredPayments) {
+            await this.paymentModel.findByIdAndUpdate(payment._id, {
+              status: 'expired',
+              expiredAt: new Date(),
+              statusDetail: 'Pago expirado por tiempo de espera',
+            });
+            this.logger.log(`Pago ${payment._id} marcado como expirado`);
+          }
 
-        for (const payment of errorPayments) {
-          await this.paymentModel.findByIdAndUpdate(payment._id, {
-            status: 'failed',
-            statusDetail: 'Pago marcado como fallido después de error prolongado',
-            failedAt: new Date()
+          // También limpiar pagos que están en error por mucho tiempo
+          const errorTime = new Date(Date.now() - this.PAYMENT_TIMEOUT * 2); // 1 hora
+          const errorPayments = await this.paymentModel.find({
+            status: 'error',
+            errorAt: { $lt: errorTime },
           });
-          this.logger.log(`Pago ${payment._id} marcado como fallido después de error prolongado`);
+
+          for (const payment of errorPayments) {
+            await this.paymentModel.findByIdAndUpdate(payment._id, {
+              status: 'failed',
+              statusDetail: 'Pago marcado como fallido después de error prolongado',
+              failedAt: new Date(),
+            });
+            this.logger.log(`Pago ${payment._id} marcado como fallido después de error prolongado`);
+          }
+        } catch (error) {
+          this.logger.error(`Error en el limpiador de pagos: ${error.message}`, error.stack);
         }
-      } catch (error) {
-        this.logger.error(`Error en el limpiador de pagos: ${error.message}`, error.stack);
-      }
-    }, 5 * 60 * 1000); // Ejecutar cada 5 minutos
+      },
+      5 * 60 * 1000,
+    ); // Ejecutar cada 5 minutos
   }
 
   async getPendingPayment(userId: string): Promise<PaymentDocument | null> {
     return this.paymentModel.findOne({
       userId,
-      status: 'pending'
+      status: 'pending',
     });
   }
 
   async getPaymentById(paymentId: string): Promise<PaymentDocument | null> {
     // Primero intentar buscar por paymentId (ID de MercadoPago)
     let payment = await this.paymentModel.findOne({ paymentId: paymentId });
-    
+
     // Si no se encuentra y el paymentId parece ser un ObjectId de MongoDB, buscar por _id
     if (!payment && paymentId.match(/^[0-9a-fA-F]{24}$/)) {
       payment = await this.paymentModel.findById(paymentId);
     }
-    
+
     return payment;
   }
 
-  async createInvoice(userId: string, pack: Pack, paymentMethod: string = 'mercadopago'): Promise<string> {
+  async createInvoice(
+    userId: string,
+    pack: Pack,
+    paymentMethod: string = 'mercadopago',
+  ): Promise<string> {
     try {
       if (!userId) {
         throw new Error('El ID del usuario es requerido');
@@ -90,7 +97,9 @@ export class PaymentsService {
         throw new Error('El pack seleccionado no es válido');
       }
 
-      this.logger.debug(`Creando pago para usuario ${userId} con pack ${pack.id} y monto ${pack.price} USDT`);
+      this.logger.debug(
+        `Creando pago para usuario ${userId} con pack ${pack.id} y monto ${pack.price} USDT`,
+      );
 
       const payment = await this.paymentModel.create({
         userId,
@@ -101,7 +110,7 @@ export class PaymentsService {
         statusDetail: 'Pago pendiente de confirmación',
         createdAt: new Date(),
         expiresAt: new Date(Date.now() + this.PAYMENT_TIMEOUT),
-        paymentMethod
+        paymentMethod,
       });
 
       this.logger.debug(`Documento de pago creado con ID: ${payment._id}`);
@@ -127,10 +136,10 @@ export class PaymentsService {
             // Las back_urls son opcionales - el webhook es suficiente para procesar pagos
             // back_urls: {
             //   success: `${process.env.BASE_URL}/payment/success`,
-            //   failure: `${process.env.BASE_URL}/payment/failure`, 
+            //   failure: `${process.env.BASE_URL}/payment/failure`,
             //   pending: `${process.env.BASE_URL}/payment/pending`
             // },
-            expires: false // Los enlaces no expiran
+            expires: false, // Los enlaces no expiran
           });
           url = this.mercadopago.isProduction ? response.init_point : response.sandbox_init_point;
           paymentId = response.id;
@@ -139,7 +148,7 @@ export class PaymentsService {
       await this.paymentModel.findByIdAndUpdate(payment._id, {
         invoiceUrl: url,
         invoiceId: payment._id.toString(),
-        paymentId: paymentId
+        paymentId: paymentId,
       });
 
       this.logger.debug(`Documento de pago actualizado con URL e ID de factura`);
@@ -158,7 +167,7 @@ export class PaymentsService {
       if (!payment) {
         throw new Error(`Pago no encontrado: ${paymentId}`);
       }
-      
+
       await this.paymentModel.findByIdAndUpdate(payment._id, {
         messageId,
       });
@@ -197,7 +206,7 @@ export class PaymentsService {
       // Añadir créditos al usuario
       const paymentDoc = payment.toObject();
       await this.users.addCredits(paymentDoc.userId, paymentDoc.credits);
-      
+
       // Incrementar contador de compras
       await this.users.incrementTotalPurchases(paymentDoc.userId);
 
@@ -278,6 +287,7 @@ export class PaymentsService {
         status: 'failed',
         statusDetail: `Pago fallido: ${reason}`,
         failedAt: new Date(),
+        errorMessage: reason,
       });
 
       this.logger.log(`Pago marcado como fallido para la orden: ${orderId} - ${reason}`);
@@ -287,71 +297,53 @@ export class PaymentsService {
     }
   }
 
-  async markFailedWithRefund(orderId: string, reason: string): Promise<void> {
+  async updatePaymentWithMerchantOrderData(
+    paymentId: string,
+    merchantOrderData: any,
+  ): Promise<void> {
     try {
-      const payment = await this.paymentModel.findOne({ paymentId: orderId });
+      const payment = await this.paymentModel.findOne({ paymentId });
       if (!payment) {
-        this.logger.warn(`Pago no encontrado para la orden: ${orderId}`);
+        this.logger.warn(
+          `Pago no encontrado para actualizar con merchant order data: ${paymentId}`,
+        );
         return;
       }
 
-      if (payment.status === 'confirmed' || payment.status === 'failed') {
-        this.logger.warn(`Pago ya está en estado final para la orden: ${orderId}`);
-        return;
+      const updateData: any = {
+        merchantOrderId: merchantOrderData.merchantOrder.id,
+        preferenceId: merchantOrderData.merchantOrder.preferenceId,
+        transactionAmount: merchantOrderData.transactionAmount,
+        totalPaidAmount: merchantOrderData.totalPaidAmount,
+        currencyId: merchantOrderData.currencyId,
+        operationType: merchantOrderData.operationType,
+        payerId: merchantOrderData.merchantOrder.payerId,
+        payerEmail: merchantOrderData.merchantOrder.payerEmail,
+        collectorId: merchantOrderData.merchantOrder.collectorId,
+        collectorEmail: merchantOrderData.merchantOrder.collectorEmail,
+        siteId: merchantOrderData.merchantOrder.siteId,
+        isTest: merchantOrderData.merchantOrder.isTest,
+        orderStatus: merchantOrderData.merchantOrder.orderStatus,
+      };
+
+      // Agregar fechas si están disponibles
+      if (merchantOrderData.dateApproved) {
+        updateData.dateApproved = new Date(merchantOrderData.dateApproved);
+      }
+      if (merchantOrderData.dateCreated) {
+        updateData.dateCreated = new Date(merchantOrderData.dateCreated);
+      }
+      if (merchantOrderData.lastModified) {
+        updateData.lastModified = new Date(merchantOrderData.lastModified);
       }
 
-      await this.paymentModel.findByIdAndUpdate(payment._id, {
-        status: 'failed',
-        statusDetail: `Pago fallido con devolución: ${reason}`,
-        failedAt: new Date(),
-        refundRequested: true,
-        refundRequestedAt: new Date(),
-      });
-
-      // Intentar procesar la devolución automáticamente
-      try {
-        await this.processAutomaticRefund(payment);
-        this.logger.log(`Devolución automática procesada para la orden: ${orderId}`);
-      } catch (refundError) {
-        this.logger.error(`Error procesando devolución automática: ${refundError.message}`, refundError.stack);
-        // Marcar que la devolución falló pero no lanzar error
-        await this.paymentModel.findByIdAndUpdate(payment._id, {
-          refundFailed: true,
-          refundFailedAt: new Date(),
-          refundFailedReason: refundError.message,
-        });
-      }
-
-      this.logger.log(`Pago marcado como fallido con devolución para la orden: ${orderId} - ${reason}`);
+      await this.paymentModel.findByIdAndUpdate(payment._id, updateData);
+      this.logger.log(`Pago actualizado con datos de merchant order: ${paymentId}`);
     } catch (error) {
-      this.logger.error(`Error marcando pago como fallido con devolución: ${error.message}`, error.stack);
-      throw error;
-    }
-  }
-
-  private async processAutomaticRefund(payment: any): Promise<void> {
-    // Solo procesar devoluciones para pagos de MercadoPago
-    if (payment.paymentMethod !== 'mercadopago' || !payment.paymentId) {
-      throw new Error('Devolución automática solo disponible para pagos de MercadoPago');
-    }
-
-    try {
-      // Intentar procesar la devolución a través de MercadoPago
-      const refundResult = await this.mercadopago.processRefund(payment.paymentId, payment.amount);
-      
-      if (refundResult.success) {
-        await this.paymentModel.findByIdAndUpdate(payment._id, {
-          refundProcessed: true,
-          refundProcessedAt: new Date(),
-          refundId: refundResult.refundId,
-          refundStatus: refundResult.status,
-        });
-        this.logger.log(`Devolución procesada exitosamente: ${refundResult.refundId}`);
-      } else {
-        throw new Error(`Devolución falló: ${refundResult.error}`);
-      }
-    } catch (error) {
-      this.logger.error(`Error en devolución automática: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error actualizando pago con merchant order data: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -363,7 +355,11 @@ export class PaymentsService {
         throw new Error('Pago no encontrado');
       }
 
-      if (payment.status !== 'error' && payment.status !== 'failed' && payment.status !== 'expired') {
+      if (
+        payment.status !== 'error' &&
+        payment.status !== 'failed' &&
+        payment.status !== 'expired'
+      ) {
         throw new Error('El pago no está en un estado que permita reintento');
       }
 
@@ -374,13 +370,17 @@ export class PaymentsService {
       }
 
       // Crear nuevo pago
-      const newPaymentUrl = await this.createInvoice(payment.userId, {
-        id: pack.packId,
-        name: pack.title,
-        price: pack.price,
-        credits: pack.amount + (pack.bonusCredits || 0),
-        description: pack.description
-      }, payment.paymentMethod);
+      const newPaymentUrl = await this.createInvoice(
+        payment.userId,
+        {
+          id: pack.packId,
+          name: pack.title,
+          price: pack.price,
+          credits: pack.amount + (pack.bonusCredits || 0),
+          description: pack.description,
+        },
+        payment.paymentMethod,
+      );
 
       // Marcar el pago anterior como reintentado
       await this.paymentModel.findByIdAndUpdate(payment._id, {
@@ -398,43 +398,13 @@ export class PaymentsService {
   }
 
   async getFailedPayments(userId: string): Promise<PaymentDocument[]> {
-    return this.paymentModel.find({
-      userId,
-      status: { $in: ['error', 'failed', 'expired', 'rejected'] }
-    }).sort({ createdAt: -1 }).limit(5);
-  }
-
-  async getPaymentsWithPendingRefunds(): Promise<PaymentDocument[]> {
-    return this.paymentModel.find({
-      refundRequested: true,
-      refundProcessed: { $ne: true },
-      refundFailed: { $ne: true }
-    }).sort({ refundRequestedAt: 1 });
-  }
-
-  async getRefundStatus(paymentId: string): Promise<{
-    hasRefund: boolean;
-    refundRequested?: boolean;
-    refundProcessed?: boolean;
-    refundFailed?: boolean;
-    refundId?: string;
-    refundStatus?: string;
-    refundFailedReason?: string;
-  }> {
-    const payment = await this.getPaymentById(paymentId);
-    if (!payment) {
-      return { hasRefund: false };
-    }
-
-    return {
-      hasRefund: payment.refundRequested || false,
-      refundRequested: payment.refundRequested,
-      refundProcessed: payment.refundProcessed,
-      refundFailed: payment.refundFailed,
-      refundId: payment.refundId,
-      refundStatus: payment.refundStatus,
-      refundFailedReason: payment.refundFailedReason
-    };
+    return this.paymentModel
+      .find({
+        userId,
+        status: { $in: ['error', 'failed', 'expired', 'rejected'] },
+      })
+      .sort({ createdAt: -1 })
+      .limit(5);
   }
 
   async cancelPayment(paymentId: string): Promise<void> {
@@ -450,13 +420,13 @@ export class PaymentsService {
 
       const result = await this.paymentModel.updateOne(
         { _id: payment._id, status: 'pending' },
-        { 
-          $set: { 
+        {
+          $set: {
             status: 'cancelled',
             statusDetail: 'Pago cancelado por el usuario',
-            cancelledAt: new Date()
-          }
-        }
+            cancelledAt: new Date(),
+          },
+        },
       );
 
       if (result.matchedCount === 0) {

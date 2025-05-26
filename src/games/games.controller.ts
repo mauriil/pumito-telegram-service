@@ -1,11 +1,11 @@
-import { 
-  Controller, 
-  Get, 
-  Param, 
-  Query, 
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
   NotFoundException,
   ParseIntPipe,
-  BadRequestException 
+  BadRequestException,
 } from '@nestjs/common';
 import { GamesService } from '../db/games.service';
 import { UsersService } from '../db/users.service';
@@ -26,11 +26,11 @@ export class GamesController {
   async getGameById(@Param('gameId') gameId: string) {
     try {
       const game = await this.gamesService.getGameById(gameId);
-      
+
       return {
         success: true,
         data: game,
-        message: 'Detalles del juego obtenidos exitosamente'
+        message: 'Detalles del juego obtenidos exitosamente',
       };
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -53,7 +53,7 @@ export class GamesController {
 
     // Este sería un método que necesitarías agregar al UsersService
     // Por ahora simulo la estructura de respuesta
-    
+
     return {
       success: true,
       data: {
@@ -61,10 +61,10 @@ export class GamesController {
         criteria: {
           sortBy: 'rating',
           minGames: minGamesNumber,
-          limit: limitNumber
-        }
+          limit: limitNumber,
+        },
       },
-      message: 'Leaderboard obtenido exitosamente'
+      message: 'Leaderboard obtenido exitosamente',
     };
   }
 
@@ -72,9 +72,7 @@ export class GamesController {
    * Obtener leaderboard por victorias
    */
   @Get('leaderboard/wins')
-  async getLeaderboardByWins(
-    @Query('limit') limit?: string,
-  ) {
+  async getLeaderboardByWins(@Query('limit') limit?: string) {
     const limitNumber = limit ? Math.min(parseInt(limit), 100) : 10;
 
     return {
@@ -83,10 +81,10 @@ export class GamesController {
         leaderboard: [],
         criteria: {
           sortBy: 'wins',
-          limit: limitNumber
-        }
+          limit: limitNumber,
+        },
       },
-      message: 'Leaderboard por victorias obtenido exitosamente'
+      message: 'Leaderboard por victorias obtenido exitosamente',
     };
   }
 
@@ -97,14 +95,10 @@ export class GamesController {
   async getGamesBetweenUsers(
     @Param('playerTelegramId', ParseIntPipe) playerTelegramId: number,
     @Param('opponentTelegramId', ParseIntPipe) opponentTelegramId: number,
-    @Query('limit') limit?: string,
   ) {
-    const limitNumber = limit ? parseInt(limit) : 10;
-
-    // Verificar que ambos usuarios existen
     const [player, opponent] = await Promise.all([
       this.usersService.findByTelegramId(playerTelegramId),
-      this.usersService.findByTelegramId(opponentTelegramId)
+      this.usersService.findByTelegramId(opponentTelegramId),
     ]);
 
     if (!player) {
@@ -116,7 +110,7 @@ export class GamesController {
 
     // Aquí necesitarías un método en GamesService para buscar juegos entre usuarios específicos
     // Por ahora simulo la respuesta
-    
+
     return {
       success: true,
       data: {
@@ -125,22 +119,22 @@ export class GamesController {
           player: {
             telegramId: player.telegramId,
             username: player.username,
-            firstName: player.firstName
+            firstName: player.firstName,
           },
           opponent: {
             telegramId: opponent.telegramId,
             username: opponent.username,
-            firstName: opponent.firstName
-          }
+            firstName: opponent.firstName,
+          },
         },
         summary: {
           totalGames: 0,
           playerWins: 0,
           opponentWins: 0,
-          draws: 0
-        }
+          draws: 0,
+        },
       },
-      message: 'Historial entre usuarios obtenido exitosamente'
+      message: 'Historial entre usuarios obtenido exitosamente',
     };
   }
 
@@ -154,7 +148,7 @@ export class GamesController {
     // - Usuarios activos
     // - Promedio de duración de juegos
     // - etc.
-    
+
     return {
       success: true,
       data: {
@@ -163,9 +157,9 @@ export class GamesController {
         avgGameDuration: 0,
         mostPopularGameType: 'single_player',
         totalCreditsCirculating: 0,
-        lastUpdated: new Date()
+        lastUpdated: new Date(),
       },
-      message: 'Estadísticas globales obtenidas exitosamente'
+      message: 'Estadísticas globales obtenidas exitosamente',
     };
   }
-} 
+}
