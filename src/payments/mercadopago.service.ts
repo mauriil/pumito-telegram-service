@@ -116,7 +116,7 @@ export class MercadoPagoService {
           currency_id: this.currencyId
         }],
         external_reference: payload.external_reference,
-        notification_url: `${this.baseUrl}/webhook/mercadopago`
+        notification_url: `${this.baseUrl}/api/webhook/mercadopago`
         // Sin auto_return ni back_urls - solo dependemos del webhook para procesar pagos
       };
 
