@@ -106,6 +106,7 @@ export class MercadoPagoService {
     if (!this.baseUrl) {
       throw new Error('BASE_URL no está configurada en las variables de entorno');
     }
+    console.log("🚀 ~ MercadoPagoService ~ createPreference ~ this.baseUrl:", this.baseUrl)
 
           const preferenceData = {
         items: [{
@@ -116,7 +117,12 @@ export class MercadoPagoService {
           currency_id: this.currencyId
         }],
         external_reference: payload.external_reference,
-        notification_url: `${this.baseUrl}/api/webhook/mercadopago`
+        auto_return: 'approved',
+        back_urls: {
+          success: `${this.baseUrl}/api/webhook/mercadopago`,
+          failure: `${this.baseUrl}/api/webhook/mercadopago`,
+          pending: `${this.baseUrl}/api/webhook/mercadopago`
+        }
         // Sin auto_return ni back_urls - solo dependemos del webhook para procesar pagos
       };
 
