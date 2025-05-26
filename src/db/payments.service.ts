@@ -180,7 +180,12 @@ export class PaymentsService {
 
   async markConfirmed(orderId: string): Promise<void> {
     try {
-      const payment = await this.paymentModel.findOne({ paymentId: orderId });
+      // El orderId puede ser el _id del documento o el paymentId de MercadoPago
+      let payment = await this.paymentModel.findById(orderId);
+      if (!payment) {
+        // Si no se encuentra por _id, buscar por paymentId
+        payment = await this.paymentModel.findOne({ paymentId: orderId });
+      }
       if (!payment) {
         this.logger.warn(`Pago no encontrado para la orden: ${orderId}`);
         return;
@@ -219,7 +224,12 @@ export class PaymentsService {
 
   async markRejected(orderId: string, status: string, statusDetail: string): Promise<void> {
     try {
-      const payment = await this.paymentModel.findOne({ paymentId: orderId });
+      // El orderId puede ser el _id del documento o el paymentId de MercadoPago
+      let payment = await this.paymentModel.findById(orderId);
+      if (!payment) {
+        // Si no se encuentra por _id, buscar por paymentId
+        payment = await this.paymentModel.findOne({ paymentId: orderId });
+      }
       if (!payment) {
         this.logger.warn(`Pago no encontrado para la orden: ${orderId}`);
         return;
@@ -245,7 +255,12 @@ export class PaymentsService {
 
   async markError(orderId: string, errorMessage: string): Promise<void> {
     try {
-      const payment = await this.paymentModel.findOne({ paymentId: orderId });
+      // El orderId puede ser el _id del documento o el paymentId de MercadoPago
+      let payment = await this.paymentModel.findById(orderId);
+      if (!payment) {
+        // Si no se encuentra por _id, buscar por paymentId
+        payment = await this.paymentModel.findOne({ paymentId: orderId });
+      }
       if (!payment) {
         this.logger.warn(`Pago no encontrado para la orden: ${orderId}`);
         return;
@@ -272,7 +287,12 @@ export class PaymentsService {
 
   async markFailed(orderId: string, reason: string): Promise<void> {
     try {
-      const payment = await this.paymentModel.findOne({ paymentId: orderId });
+      // El orderId puede ser el _id del documento o el paymentId de MercadoPago
+      let payment = await this.paymentModel.findById(orderId);
+      if (!payment) {
+        // Si no se encuentra por _id, buscar por paymentId
+        payment = await this.paymentModel.findOne({ paymentId: orderId });
+      }
       if (!payment) {
         this.logger.warn(`Pago no encontrado para la orden: ${orderId}`);
         return;
@@ -299,7 +319,12 @@ export class PaymentsService {
 
   async markExpired(orderId: string, reason: string): Promise<void> {
     try {
-      const payment = await this.paymentModel.findOne({ paymentId: orderId });
+      // El orderId puede ser el _id del documento o el paymentId de MercadoPago
+      let payment = await this.paymentModel.findById(orderId);
+      if (!payment) {
+        // Si no se encuentra por _id, buscar por paymentId
+        payment = await this.paymentModel.findOne({ paymentId: orderId });
+      }
       if (!payment) {
         this.logger.warn(`Pago no encontrado para la orden: ${orderId}`);
         return;
@@ -324,14 +349,15 @@ export class PaymentsService {
   }
 
   async updatePaymentWithMerchantOrderData(
-    paymentId: string,
+    externalReference: string,
     merchantOrderData: any,
   ): Promise<void> {
     try {
-      const payment = await this.paymentModel.findOne({ paymentId });
+      // El external_reference es el _id del documento de pago
+      const payment = await this.paymentModel.findById(externalReference);
       if (!payment) {
         this.logger.warn(
-          `Pago no encontrado para actualizar con merchant order data: ${paymentId}`,
+          `Pago no encontrado para actualizar con merchant order data: ${externalReference}`,
         );
         return;
       }
@@ -364,7 +390,7 @@ export class PaymentsService {
       }
 
       await this.paymentModel.findByIdAndUpdate(payment._id, updateData);
-      this.logger.log(`Pago actualizado con datos de merchant order: ${paymentId}`);
+      this.logger.log(`Pago actualizado con datos de merchant order: ${externalReference}`);
     } catch (error) {
       this.logger.error(
         `Error actualizando pago con merchant order data: ${error.message}`,
