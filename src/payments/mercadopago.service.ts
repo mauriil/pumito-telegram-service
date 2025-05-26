@@ -139,7 +139,16 @@ export class MercadoPagoService {
 
   async verifyPayment(paymentId: string): Promise<{ approved: boolean; status: string; statusDetail: string }> {
     try {
-      const response = await this.makeRequest<any>('GET', `/checkout/preferences/${paymentId}`);
+      let response: any;
+      try {
+        response = await this.makeRequest<any>('GET', `/checkout/preferences/${paymentId}`);
+        console.log("🚀 ~ MercadoPagoService ~ verifyPayment ~ respons1e:", response)
+      } catch (error) {
+        this.logger.debug(`Error al obtener la preferencia: ${error.message}`, error.stack);
+        response = await this.makeRequest<any>('GET', `/v1/payments/${paymentId}`);
+        console.log("🚀 ~ MercadoPagoService ~ verifyPayment ~ response2:", response)
+      }
+
       
       return {
         approved: response.status === 'approved',
