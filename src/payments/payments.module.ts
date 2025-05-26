@@ -6,6 +6,7 @@ import { PaymentsService } from '../db/payments.service';
 import { MercadoPagoService } from './mercadopago.service';
 import { MercadoPagoController } from './mercadopago.controller';
 import { PaymentsController } from './payments.controller';
+import { MercadoPagoDiagnosticsService } from './mercadopago-diagnostics.service';
 import { SharedModule } from '../shared/shared.module';
 import { TelegramModule } from '../telegram/telegram.module';
 
@@ -19,7 +20,11 @@ import { TelegramModule } from '../telegram/telegram.module';
     ])
   ],
   controllers: [MercadoPagoController, PaymentsController],
-  providers: [PaymentsService, MercadoPagoService],
-  exports: [PaymentsService]
+  providers: [
+    PaymentsService,
+    MercadoPagoService,
+    MercadoPagoDiagnosticsService,
+  ],
+  exports: [PaymentsService, MercadoPagoService, MercadoPagoDiagnosticsService],
 })
 export class PaymentsModule {} 

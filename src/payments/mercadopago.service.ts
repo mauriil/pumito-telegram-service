@@ -28,6 +28,7 @@ export class MercadoPagoService {
   private readonly baseUrl: string;
   private readonly apiBase = 'https://api.mercadopago.com';
   readonly isProduction: boolean;
+  private currencyId: string = 'ARS'; // Default currency
 
   constructor(
     private readonly configService: ConfigService,
@@ -39,6 +40,30 @@ export class MercadoPagoService {
     if (!this.accessToken) {
       throw new Error('MERCADOPAGO_ACCESS_TOKEN no está configurada');
     }
+
+    // Detectar el país basado en el access token para configurar la moneda correcta
+    this.detectCurrencyFromToken();
+  }
+
+  private detectCurrencyFromToken(): void {
+    // Los access tokens tienen prefijos que indican el país:
+    // APP_USR (Argentina = ARS)
+    // TEST- + país code (Brasil = BRL, México = MXN, etc.)
+    
+    if (this.accessToken.includes('TEST-') || this.accessToken.includes('APP_USR')) {
+      // Para Argentina (por defecto)
+      this.currencyId = 'ARS';
+      
+      // Si necesitas detectar otros países, puedes usar:
+      // if (this.accessToken.includes('MLB')) this.currencyId = 'BRL'; // Brasil
+      // if (this.accessToken.includes('MLM')) this.currencyId = 'MXN'; // México
+      // if (this.accessToken.includes('MLU')) this.currencyId = 'UYU'; // Uruguay
+      // if (this.accessToken.includes('MLC')) this.currencyId = 'CLP'; // Chile
+      // if (this.accessToken.includes('MCO')) this.currencyId = 'COP'; // Colombia
+      // if (this.accessToken.includes('MPE')) this.currencyId = 'PEN'; // Perú
+    }
+    
+    this.logger.log(`Moneda detectada para MercadoPago: ${this.currencyId}`);
   }
 
   private async makeRequest<T>(method: string, endpoint: string, data?: any): Promise<T> {
@@ -69,34 +94,33 @@ export class MercadoPagoService {
       throw new Error('El monto debe ser mayor a 0');
     }
 
-    if (!payload.description) {
-      throw new Error('La descripción es requerida');
+    if (!payload.description || payload.description.trim() === '') {
+      throw new Error('La descripción es requerida y no puede estar vacía');
     }
 
-    if (!payload.external_reference) {
-      throw new Error('La referencia externa es requerida');
+    if (!payload.external_reference || payload.external_reference.trim() === '') {
+      throw new Error('La referencia externa es requerida y no puede estar vacía');
     }
 
-    // Las back_urls son opcionales - solo necesarias para mejorar UX del usuario
+    // Validar que baseUrl esté configurado para el notification_url
+    if (!this.baseUrl) {
+      throw new Error('BASE_URL no está configurada en las variables de entorno');
+    }
 
     const preferenceData = {
       items: [{
         id: payload.external_reference,
-        title: payload.description,
+        title: payload.description.substring(0, 256), // MercadoPago limita el título a 256 caracteres
         quantity: 1,
-        unit_price: Number(payload.amount),
-        currency_id: 'ARS'
+        unit_price: Number(Number(payload.amount).toFixed(2)), // Asegurar formato decimal correcto
+        currency_id: this.currencyId
       }],
       external_reference: payload.external_reference,
-      ...(payload.back_urls && { back_urls: payload.back_urls }),
       notification_url: `${this.baseUrl}/webhook/mercadopago`,
-      payment_methods: {
-        excluded_payment_types: [
-          { id: 'ticket' }
-        ],
-        installments: 1
-      }
+      auto_return: 'approved' // Agregar auto_return para mejorar la experiencia
     };
+
+    this.logger.debug(`Datos de preferencia a enviar: ${JSON.stringify(preferenceData, null, 2)}`);
 
     const response = await this.makeRequest<any>('POST', '/checkout/preferences', preferenceData);
     

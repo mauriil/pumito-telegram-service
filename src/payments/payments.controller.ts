@@ -1,9 +1,10 @@
-import { Body, Controller, Post, HttpStatus, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Body, Controller, Post, Get, HttpStatus, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsEnum } from 'class-validator';
 import { PaymentsService } from '../db/payments.service';
 import { CreditPacksService } from '../db/credit-packs.service';
 import { UsersService } from '../db/users.service';
+import { MercadoPagoDiagnosticsService } from './mercadopago-diagnostics.service';
 
 class CreatePaymentLinkDto {
   @IsString()
@@ -43,6 +44,7 @@ export class PaymentsController {
     private readonly paymentsService: PaymentsService,
     private readonly creditPacksService: CreditPacksService,
     private readonly usersService: UsersService,
+    private readonly diagnosticsService: MercadoPagoDiagnosticsService,
   ) {}
 
   @Post('create-payment-link')
@@ -180,6 +182,42 @@ export class PaymentsController {
       }
 
       throw new BadRequestException(`Error generando link de pago: ${error.message}`);
+    }
+  }
+
+  @Get('diagnostics')
+  @ApiOperation({ 
+    summary: 'Ejecutar diagnóstico de MercadoPago',
+    description: 'Verifica la configuración de MercadoPago y detecta posibles problemas que causan errores como PXB01'
+  })
+  @ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'Diagnóstico completado',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        errors: { type: 'array', items: { type: 'string' } },
+        warnings: { type: 'array', items: { type: 'string' } },
+        configuration: { type: 'object' },
+        timestamp: { type: 'string' }
+      }
+    }
+  })
+  async runDiagnostics() {
+    try {
+      this.logger.log('Ejecutando diagnóstico de MercadoPago...');
+      
+      const result = await this.diagnosticsService.runDiagnostics();
+      
+      return {
+        ...result,
+        timestamp: new Date().toISOString()
+      };
+      
+    } catch (error) {
+      this.logger.error(`Error en diagnóstico: ${error.message}`, error.stack);
+      throw new BadRequestException(`Error ejecutando diagnóstico: ${error.message}`);
     }
   }
 } 
