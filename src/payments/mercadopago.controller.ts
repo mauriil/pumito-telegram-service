@@ -145,7 +145,7 @@ export class MercadoPagoController {
       }
 
       // El external_reference es nuestro payment ID interno
-      const paymentId = external_reference;
+      const paymentId = preference_id;
       this.logger.log(`Procesando back URL para pago ID: ${paymentId}`);
 
       // Verificar el estado del pago en MercadoPago usando el collection_id o payment_id
@@ -346,11 +346,9 @@ export class MercadoPagoController {
     </head>
     <body>
         <div class="container">
-            <span class="icon">${config.icon}</span>
             <h1 class="title">${config.title}</h1>
             <p class="description">${config.description}</p>
             <div class="message">${message}</div>
-            <button class="button" onclick="window.close()">Cerrar</button>
             <div class="footer">
                 <p>Puedes cerrar esta ventana y regresar al bot de Telegram.</p>
             </div>
