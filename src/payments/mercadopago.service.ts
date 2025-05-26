@@ -133,7 +133,7 @@ export class MercadoPagoService {
 
   async verifyPayment(paymentId: string): Promise<{ approved: boolean; status: string; statusDetail: string }> {
     try {
-      const response = await this.makeRequest<any>('GET', `/v1/payments/${paymentId}`);
+      const response = await this.makeRequest<any>('GET', `/v1/payments/search?external_reference=${paymentId}`);
       
       return {
         approved: response.status === 'approved',
