@@ -56,111 +56,216 @@ export class MercadoPagoController {
       const merchantOrderId = merchantOrderIdMatch[1];
       this.logger.log(`Procesando merchant order ID: ${merchantOrderId}`);
 
-      // Verificar el estado del pago usando el merchant order
-      const paymentStatus = await this.mercadopago.verifyMerchantOrderPayment(merchantOrderId);
+      // Obtener la merchant order directamente
+      const merchantOrder = await this.mercadopago.getMerchantOrder(merchantOrderId);
+      
+      if (!merchantOrder) {
+        this.logger.warn(`No se pudo obtener merchant order: ${merchantOrderId}`);
+        return res.status(HttpStatus.OK).json({ status: 'Merchant order not found' });
+      }
 
-      if (paymentStatus.approved && paymentStatus.paymentData) {
-        try {
-          // Buscar el pago usando el external_reference del merchant order
-          const externalReference = paymentStatus.paymentData.merchantOrder.externalReference;
+      // Extraer external_reference que es nuestro payment ID
+      const externalReference = merchantOrder.external_reference;
+      if (!externalReference) {
+        this.logger.warn(`External reference no encontrado en merchant order: ${merchantOrderId}`);
+        return res.status(HttpStatus.OK).json({ status: 'External reference not found' });
+      }
 
-          if (!externalReference) {
-            this.logger.warn('External reference no encontrado en merchant order');
-            return res.status(HttpStatus.OK).json({ status: 'External reference not found' });
+      this.logger.log(`Procesando pago con external reference: ${externalReference}`);
+      this.logger.log(`Estado de merchant order: ${merchantOrder.status}, Order status: ${merchantOrder.order_status}, Cancelled: ${merchantOrder.cancelled}`);
+
+      // Verificar si la orden fue cancelada
+      if (merchantOrder.cancelled) {
+        this.logger.log(`Merchant order cancelada: ${merchantOrderId}`);
+        await this.payments.markRejected(
+          externalReference,
+          'cancelled',
+          'Orden cancelada por el usuario o por el sistema'
+        );
+
+        // Actualizar mensaje en Telegram
+        const payment = await this.payments.getPaymentById(externalReference);
+        if (payment && payment.messageId) {
+          await this.telegraf.updatePaymentMessage(payment.userId, externalReference, 'rejected');
+        }
+
+        return res.status(HttpStatus.OK).json({ status: 'Order cancelled' });
+      }
+
+      // Evaluar el estado según las reglas de MercadoPago
+      let paymentStatus: 'confirmed' | 'rejected' | 'pending' | 'expired';
+      let statusDetail: string;
+
+      switch (merchantOrder.status) {
+        case 'closed':
+          // Order with payments covering total amount
+          if (merchantOrder.order_status === 'paid') {
+            paymentStatus = 'confirmed';
+            statusDetail = 'Pago completado exitosamente';
+          } else {
+            // Closed pero no paid, verificar si hay reembolsos
+            if (merchantOrder.order_status === 'reverted') {
+              paymentStatus = 'rejected';
+              statusDetail = 'Pago revertido - todos los pagos fueron reembolsados o contracargados';
+            } else {
+              paymentStatus = 'pending';
+              statusDetail = `Orden cerrada pero estado de pago: ${merchantOrder.order_status}`;
+            }
           }
+          break;
 
-          // Actualizar el pago con los datos del merchant order
-          await this.payments.updatePaymentWithMerchantOrderData(
-            externalReference,
-            paymentStatus.paymentData,
-          );
+        case 'expired':
+          // Canceled order that does not have approved or pending payments
+          paymentStatus = 'expired';
+          statusDetail = 'Orden expirada - no tiene pagos aprobados o pendientes';
+          break;
 
-          // Confirmar el pago y procesar los créditos
-          await this.payments.markConfirmed(externalReference);
-          this.logger.log(`Pago confirmado para external reference: ${externalReference}`);
-
-          // Actualizar mensaje en Telegram
-          const payment = await this.payments.getPaymentById(externalReference);
-          if (payment && payment.messageId) {
-            await this.telegraf.updatePaymentMessage(
-              payment.userId,
-              externalReference,
-              'confirmed',
-            );
+        case 'opened':
+        default:
+          // Order without payments or with pending payments
+          if (merchantOrder.order_status === 'payment_required') {
+            paymentStatus = 'pending';
+            statusDetail = 'Orden abierta - esperando pago';
+          } else if (merchantOrder.order_status === 'paid') {
+            // Caso especial: opened pero paid (puede pasar durante procesamiento)
+            paymentStatus = 'confirmed';
+            statusDetail = 'Pago completado exitosamente';
+          } else {
+            paymentStatus = 'pending';
+            statusDetail = `Orden abierta - estado: ${merchantOrder.order_status}`;
           }
-        } catch (confirmError) {
-          this.logger.error(
-            `Error confirmando pago exitoso en webhook: ${confirmError.message}`,
-            confirmError.stack,
-          );
+          break;
+      }
 
-          const externalReference = paymentStatus.paymentData?.merchantOrder?.externalReference;
-          if (externalReference) {
-            // Marcar como fallido sin intentar reembolso (ya no está disponible)
+      this.logger.log(`Estado determinado para ${externalReference}: ${paymentStatus} - ${statusDetail}`);
+
+      // Preparar datos de la merchant order para actualizar en BD
+      const merchantOrderData = {
+        merchantOrder: {
+          id: merchantOrder.id,
+          status: merchantOrder.status,
+          orderStatus: merchantOrder.order_status,
+          totalAmount: merchantOrder.total_amount,
+          paidAmount: merchantOrder.paid_amount,
+          refundedAmount: merchantOrder.refunded_amount,
+          siteId: merchantOrder.site_id,
+          isTest: merchantOrder.is_test,
+          cancelled: merchantOrder.cancelled,
+          preferenceId: merchantOrder.preference_id,
+          externalReference: merchantOrder.external_reference,
+          collectorId: merchantOrder.collector.id,
+          collectorEmail: merchantOrder.collector.email,
+          payerEmail: merchantOrder.payer?.email || null,
+          payerId: merchantOrder.payer?.id || null,
+        },
+        // Datos del último pago si existe
+        ...(merchantOrder.payments && merchantOrder.payments.length > 0 && {
+          paymentId: merchantOrder.payments[merchantOrder.payments.length - 1].id,
+          transactionAmount: merchantOrder.payments[merchantOrder.payments.length - 1].transaction_amount,
+          totalPaidAmount: merchantOrder.payments[merchantOrder.payments.length - 1].total_paid_amount,
+          currencyId: merchantOrder.payments[merchantOrder.payments.length - 1].currency_id,
+          operationType: merchantOrder.payments[merchantOrder.payments.length - 1].operation_type,
+          dateApproved: merchantOrder.payments[merchantOrder.payments.length - 1].date_approved,
+          dateCreated: merchantOrder.payments[merchantOrder.payments.length - 1].date_created,
+          lastModified: merchantOrder.payments[merchantOrder.payments.length - 1].last_modified,
+        }),
+      };
+
+      // Siempre actualizar el pago con los datos de la merchant order
+      try {
+        await this.payments.updatePaymentWithMerchantOrderData(externalReference, merchantOrderData);
+        this.logger.log(`Datos de merchant order actualizados para: ${externalReference}`);
+      } catch (updateError) {
+        this.logger.error(`Error actualizando datos de merchant order: ${updateError.message}`, updateError.stack);
+        // Continuar con el procesamiento aunque falle la actualización de datos
+      }
+
+      // Procesar según el estado determinado
+      try {
+        switch (paymentStatus) {
+          case 'confirmed':
+            await this.payments.markConfirmed(externalReference);
+            this.logger.log(`Pago confirmado para external reference: ${externalReference}`);
+
+            // Actualizar mensaje en Telegram
+            const confirmedPayment = await this.payments.getPaymentById(externalReference);
+            if (confirmedPayment && confirmedPayment.messageId) {
+              await this.telegraf.updatePaymentMessage(
+                confirmedPayment.userId,
+                externalReference,
+                'confirmed',
+              );
+            }
+            break;
+
+          case 'rejected':
+            await this.payments.markRejected(externalReference, merchantOrder.status, statusDetail);
+            this.logger.log(`Pago rechazado para external reference: ${externalReference} - ${statusDetail}`);
+
+            // Actualizar mensaje en Telegram
+            const rejectedPayment = await this.payments.getPaymentById(externalReference);
+            if (rejectedPayment && rejectedPayment.messageId) {
+              await this.telegraf.updatePaymentMessage(rejectedPayment.userId, externalReference, 'rejected');
+            }
+            break;
+
+          case 'expired':
+            await this.payments.markExpired(externalReference, statusDetail);
+            this.logger.log(`Pago expirado para external reference: ${externalReference} - ${statusDetail}`);
+
+            // Actualizar mensaje en Telegram
+            const expiredPayment = await this.payments.getPaymentById(externalReference);
+            if (expiredPayment && expiredPayment.messageId) {
+              await this.telegraf.updatePaymentMessage(expiredPayment.userId, externalReference, 'expired');
+            }
+            break;
+
+          case 'pending':
+          default:
+            // Para pending, solo logueamos pero no cambiamos el estado si ya está en pending
+            this.logger.log(`Pago pendiente para external reference: ${externalReference} - ${statusDetail}`);
+            
+            // Verificar si necesitamos actualizar el mensaje en Telegram
+            const pendingPayment = await this.payments.getPaymentById(externalReference);
+            if (pendingPayment && pendingPayment.messageId && pendingPayment.status !== 'pending') {
+              await this.telegraf.updatePaymentMessage(pendingPayment.userId, externalReference, 'pending');
+            }
+            break;
+        }
+      } catch (statusError) {
+        this.logger.error(`Error procesando estado ${paymentStatus} para ${externalReference}: ${statusError.message}`, statusError.stack);
+
+        // Si es un pago confirmado pero falla el procesamiento, manejar especialmente
+        if (paymentStatus === 'confirmed') {
+          try {
             await this.payments.markFailed(
               externalReference,
-              `Pago exitoso pero falló al procesar créditos: ${confirmError.message}`,
+              `Pago exitoso pero falló al procesar créditos: ${statusError.message}`,
             );
 
             // Actualizar mensaje en Telegram
-            const paymentForUpdate = await this.payments.getPaymentById(externalReference);
-            if (paymentForUpdate && paymentForUpdate.messageId) {
-              await this.telegraf.updatePaymentMessage(
-                paymentForUpdate.userId,
-                externalReference,
-                'failed',
-              );
+            const failedPayment = await this.payments.getPaymentById(externalReference);
+            if (failedPayment && failedPayment.messageId) {
+              await this.telegraf.updatePaymentMessage(failedPayment.userId, externalReference, 'failed');
             }
 
             // Notificar al usuario sobre el problema
-            const paymentForNotification = await this.payments.getPaymentById(externalReference);
-            if (paymentForNotification) {
+            if (failedPayment) {
               await this.telegraf.sendNotification(
-                paymentForNotification.userId,
+                failedPayment.userId,
                 `⚠️ <b>Problema con tu pago</b>\n\n` +
                   `Tu pago fue procesado exitosamente en MercadoPago, pero hubo un error al añadir los créditos.\n` +
                   `Por favor contacta soporte con el ID de pago: ${externalReference}\n\n` +
                   `Nuestro equipo resolverá este problema lo antes posible.`,
               );
             }
+          } catch (failError) {
+            this.logger.error(`Error marcando pago como fallido: ${failError.message}`, failError.stack);
           }
-        }
-      } else {
-        // Si el pago no está aprobado, buscar el external reference para marcarlo como rechazado
-        const externalReference = paymentStatus.paymentData?.merchantOrder?.externalReference;
-
-        if (externalReference) {
-          // Actualizar el pago con los datos del merchant order (aunque no esté aprobado)
-          if (paymentStatus.paymentData) {
-            await this.payments.updatePaymentWithMerchantOrderData(
-              externalReference,
-              paymentStatus.paymentData,
-            );
-          }
-
-          // Marcar como rechazado con el detalle
-          await this.payments.markRejected(
-            externalReference,
-            paymentStatus.status,
-            paymentStatus.statusDetail,
-          );
-          this.logger.log(
-            `Pago rechazado para external reference: ${externalReference} - ${paymentStatus.status}: ${paymentStatus.statusDetail}`,
-          );
-
-          // Actualizar mensaje en Telegram
-          const payment = await this.payments.getPaymentById(externalReference);
-          if (payment && payment.messageId) {
-            await this.telegraf.updatePaymentMessage(payment.userId, externalReference, 'rejected');
-          }
-        } else {
-          this.logger.warn(
-            `No se pudo obtener external reference para merchant order: ${merchantOrderId}`,
-          );
         }
       }
 
-      return res.status(HttpStatus.OK).json({ status: 'OK' });
+      return res.status(HttpStatus.OK).json({ status: 'OK', processed: externalReference });
     } catch (error) {
       this.logger.error(`Error procesando webhook: ${error.message}`, error.stack);
 

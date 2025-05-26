@@ -297,6 +297,32 @@ export class PaymentsService {
     }
   }
 
+  async markExpired(orderId: string, reason: string): Promise<void> {
+    try {
+      const payment = await this.paymentModel.findOne({ paymentId: orderId });
+      if (!payment) {
+        this.logger.warn(`Pago no encontrado para la orden: ${orderId}`);
+        return;
+      }
+
+      if (payment.status !== 'pending') {
+        this.logger.warn(`Pago no está en estado pendiente para la orden: ${orderId}`);
+        return;
+      }
+
+      await this.paymentModel.findByIdAndUpdate(payment._id, {
+        status: 'expired',
+        statusDetail: `Pago expirado: ${reason}`,
+        expiredAt: new Date(),
+      });
+
+      this.logger.log(`Pago marcado como expirado para la orden: ${orderId} - ${reason}`);
+    } catch (error) {
+      this.logger.error(`Error marcando pago como expirado: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
   async updatePaymentWithMerchantOrderData(
     paymentId: string,
     merchantOrderData: any,
