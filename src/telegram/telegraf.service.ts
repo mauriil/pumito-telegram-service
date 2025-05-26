@@ -1,35 +1,127 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-import { Context } from 'telegraf';
+import { InjectBot } from 'nestjs-telegraf';
+import { Telegraf, Context } from 'telegraf';
 import { PurchaseFlow } from './handlers/purchase.flow';
 import { UsersService } from '../db/users.service';
+import { PaymentsService } from '../db/payments.service';
+import { CreditPacksService } from '../db/credit-packs.service';
 
 @Injectable()
 export class TelegrafService {
   private readonly logger = new Logger(TelegrafService.name);
 
   constructor(
+    @InjectBot() private readonly bot: Telegraf,
     @Inject(forwardRef(() => PurchaseFlow))
     private readonly purchaseFlow: PurchaseFlow,
     private readonly users: UsersService,
+    @Inject(forwardRef(() => PaymentsService))
+    private readonly payments: PaymentsService,
+    @Inject(forwardRef(() => CreditPacksService))
+    private readonly creditPacksService: CreditPacksService,
   ) {}
 
   async updatePaymentMessage(userId: string, paymentId: string, status: string): Promise<void> {
     try {
-      // Obtener el contexto del usuario
-      const ctx = await this.getUserContext(userId);
-      if (!ctx) {
-        this.logger.warn(`No se pudo obtener el contexto para el usuario ${userId}`);
+      // Obtener el pago para conseguir el messageId
+      const payment = await this.payments.getPaymentById(paymentId);
+      if (!payment || !payment.messageId) {
+        this.logger.warn(`Pago no encontrado o sin messageId para actualizar: ${paymentId}`);
         return;
       }
 
-      // Actualizar el mensaje usando el método del PurchaseFlow
-      await this.purchaseFlow['updatePaymentMessage'](ctx, paymentId, status);
+      // Obtener el usuario para conseguir el telegramId
+      const user = await this.users.findById(userId);
+      if (!user || !user.telegramId) {
+        this.logger.warn(`Usuario no encontrado o sin telegramId: ${userId}`);
+        return;
+      }
+
+      // Obtener información del pack
+      const pack = await this.creditPacksService.findByPackId(payment.packId);
+      if (!pack) {
+        this.logger.warn(`Pack no encontrado para el pago: ${paymentId}`);
+        return;
+      }
+
+      let message = '';
+      let keyboard = null;
+
+      switch (status) {
+        case 'confirmed':
+          message = 
+            `✅ <b>¡Pago Confirmado!</b>\n\n` +
+            `🛍️ Pack: ${pack.title}\n` +
+            `💰 Precio: $${pack.price} ${pack.currency}\n` +
+            `🎫 Créditos añadidos: ${pack.amount + (pack.bonusCredits || 0)}\n\n` +
+            `¡Gracias por tu compra!`;
+          break;
+
+        case 'expired':
+          message = 
+            `⏱️ <b>Pago Expirado</b>\n\n` +
+            `🛍️ Pack: ${pack.title}\n` +
+            `💰 Precio: $${pack.price} ${pack.currency}\n` +
+            `🎫 Créditos: ${pack.amount + (pack.bonusCredits || 0)}\n\n` +
+            `El tiempo para realizar el pago ha expirado.\n` +
+            `Puedes generar un nuevo enlace de pago usando el comando /buy`;
+          keyboard = {
+            inline_keyboard: [
+              [{ text: '🛍️ Realizar nueva compra', callback_data: 'new_purchase' }]
+            ]
+          };
+          break;
+
+        case 'cancelled':
+          message = 
+            `❌ <b>Pago Cancelado</b>\n\n` +
+            `🛍️ Pack: ${pack.title}\n` +
+            `💰 Precio: $${pack.price} ${pack.currency}\n` +
+            `🎫 Créditos: ${pack.amount + (pack.bonusCredits || 0)}\n\n` +
+            `Has cancelado el pago.\n` +
+            `Puedes generar un nuevo enlace de pago usando el comando /buy`;
+          keyboard = {
+            inline_keyboard: [
+              [{ text: '🛍️ Realizar nueva compra', callback_data: 'new_purchase' }]
+            ]
+          };
+          break;
+
+        case 'rejected':
+        case 'error':
+          message = 
+            `❌ <b>Error en el Pago</b>\n\n` +
+            `🛍️ Pack: ${pack.title}\n` +
+            `💰 Precio: $${pack.price} ${pack.currency}\n` +
+            `🎫 Créditos: ${pack.amount + (pack.bonusCredits || 0)}\n\n` +
+            `Hubo un problema al procesar tu pago.\n` +
+            `Puedes intentar nuevamente usando el comando /buy`;
+          keyboard = {
+            inline_keyboard: [
+              [{ text: '🛍️ Intentar nuevamente', callback_data: 'new_purchase' }]
+            ]
+          };
+          break;
+      }
+
+      if (message) {
+        await this.bot.telegram.editMessageText(
+          user.telegramId,
+          payment.messageId,
+          undefined,
+          message,
+          {
+            parse_mode: 'HTML',
+            reply_markup: keyboard
+          }
+        );
+      }
     } catch (error) {
       this.logger.error(`Error actualizando mensaje de pago: ${error.message}`, error.stack);
     }
   }
 
-  async sendNotification(userId: string, message: string) {
+  async sendNotification(userId: string, message: string): Promise<void> {
     try {
       const user = await this.users.findById(userId);
       if (!user || !user.telegramId) {
@@ -37,58 +129,11 @@ export class TelegrafService {
         return;
       }
 
-      const ctx = await this.getUserContext(userId);
-      if (!ctx) {
-        this.logger.warn(`No se pudo obtener el contexto para el usuario ${userId}`);
-        return;
-      }
-
-      await ctx.reply(message);
+      await this.bot.telegram.sendMessage(user.telegramId, message, {
+        parse_mode: 'HTML'
+      });
     } catch (error) {
       this.logger.error(`Error enviando notificación: ${error.message}`, error.stack);
-    }
-  }
-
-  private async getUserContext(userId: string): Promise<Context | null> {
-    try {
-      const user = await this.users.findById(userId);
-      if (!user || !user.telegramId) {
-        this.logger.warn(`Usuario no encontrado o sin telegramId: ${userId}`);
-        return null;
-      }
-
-      // Crear un contexto básico con el chat_id del usuario
-      return {
-        chat: {
-          id: user.telegramId,
-          type: 'private',
-          username: user.username,
-          first_name: user.firstName
-        },
-        from: {
-          id: user.telegramId,
-          username: user.username,
-          first_name: user.firstName
-        },
-        message: {
-          message_id: 0,
-          date: Date.now() / 1000,
-          chat: {
-            id: user.telegramId,
-            type: 'private',
-            username: user.username,
-            first_name: user.firstName
-          },
-          from: {
-            id: user.telegramId,
-            username: user.username,
-            first_name: user.firstName
-          }
-        }
-      } as Context;
-    } catch (error) {
-      this.logger.error(`Error obteniendo contexto de usuario: ${error.message}`, error.stack);
-      return null;
     }
   }
 } 

@@ -119,11 +119,11 @@ export class MercadoPagoService {
         external_reference: payload.external_reference,
         auto_return: 'approved',
         back_urls: {
-          success: `${this.baseUrl}/api/webhook/mercadopago`,
-          failure: `${this.baseUrl}/api/webhook/mercadopago`,
-          pending: `${this.baseUrl}/api/webhook/mercadopago`
-        }
-        // Sin auto_return ni back_urls - solo dependemos del webhook para procesar pagos
+          success: `${this.baseUrl}/api/webhook/mercadopago/success`,
+          failure: `${this.baseUrl}/api/webhook/mercadopago/failure`,
+          pending: `${this.baseUrl}/api/webhook/mercadopago/pending`
+        },
+        notification_url: `${this.baseUrl}/api/webhook/mercadopago`
       };
 
     this.logger.debug(`Datos de preferencia a enviar: ${JSON.stringify(preferenceData, null, 2)}`);

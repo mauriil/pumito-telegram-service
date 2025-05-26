@@ -351,8 +351,10 @@ export class PurchaseFlow {
       });
       
       // Guardar el ID del mensaje para futuras actualizaciones
-      if (sentMessage && pendingPayment) {
-        await this.pay.updatePaymentMessageId(pendingPayment._id.toString(), sentMessage.message_id);
+      // Necesitamos obtener el pago recién creado
+      const currentPayment = await this.pay.getPendingPayment(user.id);
+      if (sentMessage && currentPayment) {
+        await this.pay.updatePaymentMessageId(currentPayment._id.toString(), sentMessage.message_id);
       }
       
       await ctx.answerCbQuery('✅ Métodos de pago generados');
