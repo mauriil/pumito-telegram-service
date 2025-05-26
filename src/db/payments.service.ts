@@ -81,6 +81,7 @@ export class PaymentsService {
       this.logger.debug(`Documento de pago creado con ID: ${payment._id}`);
 
       let url: string;
+      let paymentId: string;
 
       switch (paymentMethod) {
         case 'USDT_TRC20':
@@ -106,11 +107,13 @@ export class PaymentsService {
             expires: false // Los enlaces no expiran
           });
           url = this.mercadopago.isProduction ? response.init_point : response.sandbox_init_point;
+          paymentId = response.id;
       }
 
       await this.paymentModel.findByIdAndUpdate(payment._id, {
         invoiceUrl: url,
         invoiceId: payment._id.toString(),
+        paymentId: paymentId
       });
 
       this.logger.debug(`Documento de pago actualizado con URL e ID de factura`);

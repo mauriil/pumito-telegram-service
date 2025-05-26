@@ -60,6 +60,9 @@ export class Payment {
 
   @Prop({ required: true, enum: ['mercadopago', 'USDT_TRC20', 'USDT_BEP20', 'BTC'], default: 'mercadopago' })
   paymentMethod: string;
+
+  @Prop()
+  paymentId: string;
 }
 
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
