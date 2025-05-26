@@ -69,7 +69,15 @@ export class PaymentsService {
   }
 
   async getPaymentById(paymentId: string): Promise<PaymentDocument | null> {
-    return this.paymentModel.findById(paymentId);
+    // Primero intentar buscar por paymentId (ID de MercadoPago)
+    let payment = await this.paymentModel.findOne({ paymentId: paymentId });
+    
+    // Si no se encuentra y el paymentId parece ser un ObjectId de MongoDB, buscar por _id
+    if (!payment && paymentId.match(/^[0-9a-fA-F]{24}$/)) {
+      payment = await this.paymentModel.findById(paymentId);
+    }
+    
+    return payment;
   }
 
   async createInvoice(userId: string, pack: Pack, paymentMethod: string = 'mercadopago'): Promise<string> {
@@ -145,7 +153,13 @@ export class PaymentsService {
 
   async updatePaymentMessageId(paymentId: string, messageId: number): Promise<void> {
     try {
-      await this.paymentModel.findByIdAndUpdate(paymentId, {
+      // Buscar el pago primero para obtener el _id correcto
+      const payment = await this.getPaymentById(paymentId);
+      if (!payment) {
+        throw new Error(`Pago no encontrado: ${paymentId}`);
+      }
+      
+      await this.paymentModel.findByIdAndUpdate(payment._id, {
         messageId,
       });
       this.logger.debug(`Mensaje de pago actualizado para el pago: ${paymentId}`);
@@ -344,7 +358,7 @@ export class PaymentsService {
 
   async retryFailedPayment(paymentId: string): Promise<string> {
     try {
-      const payment = await this.paymentModel.findById(paymentId);
+      const payment = await this.getPaymentById(paymentId);
       if (!payment) {
         throw new Error('Pago no encontrado');
       }
@@ -407,7 +421,7 @@ export class PaymentsService {
     refundStatus?: string;
     refundFailedReason?: string;
   }> {
-    const payment = await this.paymentModel.findById(paymentId);
+    const payment = await this.getPaymentById(paymentId);
     if (!payment) {
       return { hasRefund: false };
     }
@@ -425,7 +439,7 @@ export class PaymentsService {
 
   async cancelPayment(paymentId: string): Promise<void> {
     try {
-      const payment = await this.paymentModel.findById(paymentId);
+      const payment = await this.getPaymentById(paymentId);
       if (!payment) {
         throw new Error('Pago no encontrado');
       }
@@ -435,7 +449,7 @@ export class PaymentsService {
       }
 
       const result = await this.paymentModel.updateOne(
-        { _id: paymentId, status: 'pending' },
+        { _id: payment._id, status: 'pending' },
         { 
           $set: { 
             status: 'cancelled',
