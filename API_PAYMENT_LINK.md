@@ -119,6 +119,8 @@ Una vez que el usuario realiza el pago, MercadoPago notifica al sistema a travé
 - **Función**: Actualiza el estado del pago y añade créditos al usuario
 - **Estados posibles**: `confirmed`, `rejected`, `error`
 
+> **Nota Técnica**: No utilizamos `back_urls` ni `auto_return` para mantener la implementación simple y evitar errores como PXB01. El procesamiento se realiza completamente a través del webhook, garantizando que todos los pagos se procesen correctamente sin importar cómo el usuario abandone la página de pago.
+
 ### Información Técnica
 
 **Servicios utilizados**:
