@@ -164,7 +164,7 @@ export class PaymentsService {
 
       // Añadir créditos al usuario
       const paymentDoc = payment.toObject();
-      await this.users.addCredits(paymentDoc.userId, paymentDoc.credits);
+      await this.users.addBalance(paymentDoc.userId, paymentDoc.amount);
       
       // Incrementar contador de compras
       await this.users.incrementTotalPurchases(paymentDoc.userId);
