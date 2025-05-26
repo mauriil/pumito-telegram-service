@@ -5,6 +5,7 @@ import { Pack } from '../telegram/constants/packs';
 import { MercadoPagoService } from '../payments/mercadopago.service';
 import { Payment, PaymentDocument } from './schemas/payment.schema';
 import { UsersService } from './users.service';
+import { CreditPacksService } from './credit-packs.service';
 
 @Injectable()
 export class PaymentsService {
@@ -15,6 +16,7 @@ export class PaymentsService {
     @InjectModel(Payment.name) private readonly paymentModel: Model<PaymentDocument>,
     private readonly mercadopago: MercadoPagoService,
     private readonly users: UsersService,
+    private readonly creditPacksService: CreditPacksService,
   ) {
     // Iniciar el limpiador de pagos expirados
     this.startPaymentCleaner();
@@ -36,6 +38,22 @@ export class PaymentsService {
             statusDetail: 'Pago expirado por tiempo de espera'
           });
           this.logger.log(`Pago ${payment._id} marcado como expirado`);
+        }
+
+        // También limpiar pagos que están en error por mucho tiempo
+        const errorTime = new Date(Date.now() - (this.PAYMENT_TIMEOUT * 2)); // 1 hora
+        const errorPayments = await this.paymentModel.find({
+          status: 'error',
+          errorAt: { $lt: errorTime }
+        });
+
+        for (const payment of errorPayments) {
+          await this.paymentModel.findByIdAndUpdate(payment._id, {
+            status: 'failed',
+            statusDetail: 'Pago marcado como fallido después de error prolongado',
+            failedAt: new Date()
+          });
+          this.logger.log(`Pago ${payment._id} marcado como fallido después de error prolongado`);
         }
       } catch (error) {
         this.logger.error(`Error en el limpiador de pagos: ${error.message}`, error.stack);
@@ -155,8 +173,8 @@ export class PaymentsService {
         return;
       }
 
-      // Actualizar estado del pago
-      await this.paymentModel.findByIdAndUpdate(orderId, {
+      // Actualizar estado del pago usando el _id del documento encontrado
+      await this.paymentModel.findByIdAndUpdate(payment._id, {
         status: 'confirmed',
         statusDetail: 'Pago confirmado exitosamente',
         confirmedAt: new Date(),
@@ -178,7 +196,7 @@ export class PaymentsService {
 
   async markRejected(orderId: string, status: string, statusDetail: string): Promise<void> {
     try {
-      const payment = await this.paymentModel.findById(orderId);
+      const payment = await this.paymentModel.findOne({ paymentId: orderId });
       if (!payment) {
         this.logger.warn(`Pago no encontrado para la orden: ${orderId}`);
         return;
@@ -189,7 +207,7 @@ export class PaymentsService {
         return;
       }
 
-      await this.paymentModel.findByIdAndUpdate(orderId, {
+      await this.paymentModel.findByIdAndUpdate(payment._id, {
         status: 'rejected',
         statusDetail: `${status}: ${statusDetail}`,
         rejectedAt: new Date(),
@@ -204,7 +222,7 @@ export class PaymentsService {
 
   async markError(orderId: string, errorMessage: string): Promise<void> {
     try {
-      const payment = await this.paymentModel.findById(orderId);
+      const payment = await this.paymentModel.findOne({ paymentId: orderId });
       if (!payment) {
         this.logger.warn(`Pago no encontrado para la orden: ${orderId}`);
         return;
@@ -215,7 +233,7 @@ export class PaymentsService {
         return;
       }
 
-      await this.paymentModel.findByIdAndUpdate(orderId, {
+      await this.paymentModel.findByIdAndUpdate(payment._id, {
         status: 'error',
         statusDetail: 'Error en el procesamiento del pago',
         errorMessage,
@@ -227,6 +245,182 @@ export class PaymentsService {
       this.logger.error(`Error marcando pago como error: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  async markFailed(orderId: string, reason: string): Promise<void> {
+    try {
+      const payment = await this.paymentModel.findOne({ paymentId: orderId });
+      if (!payment) {
+        this.logger.warn(`Pago no encontrado para la orden: ${orderId}`);
+        return;
+      }
+
+      if (payment.status === 'confirmed' || payment.status === 'failed') {
+        this.logger.warn(`Pago ya está en estado final para la orden: ${orderId}`);
+        return;
+      }
+
+      await this.paymentModel.findByIdAndUpdate(payment._id, {
+        status: 'failed',
+        statusDetail: `Pago fallido: ${reason}`,
+        failedAt: new Date(),
+      });
+
+      this.logger.log(`Pago marcado como fallido para la orden: ${orderId} - ${reason}`);
+    } catch (error) {
+      this.logger.error(`Error marcando pago como fallido: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async markFailedWithRefund(orderId: string, reason: string): Promise<void> {
+    try {
+      const payment = await this.paymentModel.findOne({ paymentId: orderId });
+      if (!payment) {
+        this.logger.warn(`Pago no encontrado para la orden: ${orderId}`);
+        return;
+      }
+
+      if (payment.status === 'confirmed' || payment.status === 'failed') {
+        this.logger.warn(`Pago ya está en estado final para la orden: ${orderId}`);
+        return;
+      }
+
+      await this.paymentModel.findByIdAndUpdate(payment._id, {
+        status: 'failed',
+        statusDetail: `Pago fallido con devolución: ${reason}`,
+        failedAt: new Date(),
+        refundRequested: true,
+        refundRequestedAt: new Date(),
+      });
+
+      // Intentar procesar la devolución automáticamente
+      try {
+        await this.processAutomaticRefund(payment);
+        this.logger.log(`Devolución automática procesada para la orden: ${orderId}`);
+      } catch (refundError) {
+        this.logger.error(`Error procesando devolución automática: ${refundError.message}`, refundError.stack);
+        // Marcar que la devolución falló pero no lanzar error
+        await this.paymentModel.findByIdAndUpdate(payment._id, {
+          refundFailed: true,
+          refundFailedAt: new Date(),
+          refundFailedReason: refundError.message,
+        });
+      }
+
+      this.logger.log(`Pago marcado como fallido con devolución para la orden: ${orderId} - ${reason}`);
+    } catch (error) {
+      this.logger.error(`Error marcando pago como fallido con devolución: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  private async processAutomaticRefund(payment: any): Promise<void> {
+    // Solo procesar devoluciones para pagos de MercadoPago
+    if (payment.paymentMethod !== 'mercadopago' || !payment.paymentId) {
+      throw new Error('Devolución automática solo disponible para pagos de MercadoPago');
+    }
+
+    try {
+      // Intentar procesar la devolución a través de MercadoPago
+      const refundResult = await this.mercadopago.processRefund(payment.paymentId, payment.amount);
+      
+      if (refundResult.success) {
+        await this.paymentModel.findByIdAndUpdate(payment._id, {
+          refundProcessed: true,
+          refundProcessedAt: new Date(),
+          refundId: refundResult.refundId,
+          refundStatus: refundResult.status,
+        });
+        this.logger.log(`Devolución procesada exitosamente: ${refundResult.refundId}`);
+      } else {
+        throw new Error(`Devolución falló: ${refundResult.error}`);
+      }
+    } catch (error) {
+      this.logger.error(`Error en devolución automática: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async retryFailedPayment(paymentId: string): Promise<string> {
+    try {
+      const payment = await this.paymentModel.findById(paymentId);
+      if (!payment) {
+        throw new Error('Pago no encontrado');
+      }
+
+      if (payment.status !== 'error' && payment.status !== 'failed' && payment.status !== 'expired') {
+        throw new Error('El pago no está en un estado que permita reintento');
+      }
+
+      // Buscar el pack original
+      const pack = await this.creditPacksService.findByPackId(payment.packId);
+      if (!pack) {
+        throw new Error('Pack no encontrado');
+      }
+
+      // Crear nuevo pago
+      const newPaymentUrl = await this.createInvoice(payment.userId, {
+        id: pack.packId,
+        name: pack.title,
+        price: pack.price,
+        credits: pack.amount + (pack.bonusCredits || 0),
+        description: pack.description
+      }, payment.paymentMethod);
+
+      // Marcar el pago anterior como reintentado
+      await this.paymentModel.findByIdAndUpdate(payment._id, {
+        status: 'retried',
+        statusDetail: 'Pago reintentado con nueva transacción',
+        retriedAt: new Date(),
+      });
+
+      this.logger.log(`Pago reintentado para la orden: ${paymentId}`);
+      return newPaymentUrl;
+    } catch (error) {
+      this.logger.error(`Error reintentando pago: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async getFailedPayments(userId: string): Promise<PaymentDocument[]> {
+    return this.paymentModel.find({
+      userId,
+      status: { $in: ['error', 'failed', 'expired', 'rejected'] }
+    }).sort({ createdAt: -1 }).limit(5);
+  }
+
+  async getPaymentsWithPendingRefunds(): Promise<PaymentDocument[]> {
+    return this.paymentModel.find({
+      refundRequested: true,
+      refundProcessed: { $ne: true },
+      refundFailed: { $ne: true }
+    }).sort({ refundRequestedAt: 1 });
+  }
+
+  async getRefundStatus(paymentId: string): Promise<{
+    hasRefund: boolean;
+    refundRequested?: boolean;
+    refundProcessed?: boolean;
+    refundFailed?: boolean;
+    refundId?: string;
+    refundStatus?: string;
+    refundFailedReason?: string;
+  }> {
+    const payment = await this.paymentModel.findById(paymentId);
+    if (!payment) {
+      return { hasRefund: false };
+    }
+
+    return {
+      hasRefund: payment.refundRequested || false,
+      refundRequested: payment.refundRequested,
+      refundProcessed: payment.refundProcessed,
+      refundFailed: payment.refundFailed,
+      refundId: payment.refundId,
+      refundStatus: payment.refundStatus,
+      refundFailedReason: payment.refundFailedReason
+    };
   }
 
   async cancelPayment(paymentId: string): Promise<void> {

@@ -1,7 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
-export type PaymentStatus = 'pending' | 'confirmed' | 'expired' | 'cancelled' | 'rejected' | 'error';
+export type PaymentStatus = 'pending' | 'confirmed' | 'expired' | 'cancelled' | 'rejected' | 'error' | 'failed' | 'retried';
 
 export type PaymentDocument = Payment & Document;
 
@@ -19,7 +19,7 @@ export class Payment {
   @Prop({ required: true })
   credits: number;
 
-  @Prop({ required: true, enum: ['pending', 'confirmed', 'rejected', 'expired', 'cancelled', 'error'] })
+  @Prop({ required: true, enum: ['pending', 'confirmed', 'rejected', 'expired', 'cancelled', 'error', 'failed', 'retried'] })
   status: string;
 
   @Prop()
@@ -51,6 +51,39 @@ export class Payment {
 
   @Prop()
   errorAt: Date;
+
+  @Prop()
+  failedAt: Date;
+
+  @Prop()
+  retriedAt: Date;
+
+  @Prop()
+  refundRequested: boolean;
+
+  @Prop()
+  refundRequestedAt: Date;
+
+  @Prop()
+  refundProcessed: boolean;
+
+  @Prop()
+  refundProcessedAt: Date;
+
+  @Prop()
+  refundId: string;
+
+  @Prop()
+  refundStatus: string;
+
+  @Prop()
+  refundFailed: boolean;
+
+  @Prop()
+  refundFailedAt: Date;
+
+  @Prop()
+  refundFailedReason: string;
 
   @Prop({ required: true })
   createdAt: Date;

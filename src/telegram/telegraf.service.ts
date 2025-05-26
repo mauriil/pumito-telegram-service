@@ -90,15 +90,48 @@ export class TelegrafService {
         case 'rejected':
         case 'error':
           message = 
-            `<b>Error en el Pago</b>\n\n` +
+            `⚠️ <b>Error en el Pago</b>\n\n` +
             `🛍️ Pack: ${pack.title}\n` +
             `💰 Precio: $${pack.price} ${pack.currency}\n` +
             `🎫 Créditos: ${pack.amount + (pack.bonusCredits || 0)}\n\n` +
             `Hubo un problema al procesar tu pago.\n` +
-            `Puedes intentar nuevamente usando el comando /buy`;
+            `Puedes intentar nuevamente usando el comando /buy o /failed_payments`;
           keyboard = {
             inline_keyboard: [
-              [{ text: '🛍️ Intentar nuevamente', callback_data: 'new_purchase' }]
+              [{ text: '🔄 Reintentar pago', callback_data: `retry_payment_${paymentId}` }],
+              [{ text: '🛍️ Nueva compra', callback_data: 'new_purchase' }],
+              [{ text: '📋 Ver pagos fallidos', callback_data: 'view_failed_payments' }]
+            ]
+          };
+          break;
+
+        case 'failed':
+          // Verificar si hay información de devolución
+          const refundInfo = await this.payments.getRefundStatus(paymentId);
+          let refundText = '';
+          
+          if (refundInfo.hasRefund) {
+            if (refundInfo.refundProcessed) {
+              refundText = `\n💰 <b>Devolución procesada exitosamente</b>\nID: ${refundInfo.refundId}`;
+            } else if (refundInfo.refundFailed) {
+              refundText = `\n⚠️ <b>Error en devolución:</b> ${refundInfo.refundFailedReason}\nContacta soporte para asistencia.`;
+            } else {
+              refundText = `\n⏳ <b>Devolución en proceso...</b>\nRecibirás el reembolso en 24-48 horas.`;
+            }
+          }
+
+          message = 
+            `❌ <b>Pago Fallido</b>\n\n` +
+            `🛍️ Pack: ${pack.title}\n` +
+            `💰 Precio: $${pack.price} ${pack.currency}\n` +
+            `🎫 Créditos: ${pack.amount + (pack.bonusCredits || 0)}\n\n` +
+            `El pago ha fallado definitivamente.${refundText}\n\n` +
+            `Puedes reintentar con un nuevo pago usando /failed_payments`;
+          keyboard = {
+            inline_keyboard: [
+              [{ text: '🔄 Reintentar pago', callback_data: `retry_payment_${paymentId}` }],
+              [{ text: '🛍️ Nueva compra', callback_data: 'new_purchase' }],
+              [{ text: '📋 Ver pagos fallidos', callback_data: 'view_failed_payments' }]
             ]
           };
           break;

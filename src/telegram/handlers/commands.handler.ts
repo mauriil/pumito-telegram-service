@@ -1,8 +1,10 @@
 import { Ctx, Command, Update, Action } from 'nestjs-telegraf';
-import { Context } from 'telegraf';
+import { Context, Markup } from 'telegraf';
 import { Injectable, Logger } from '@nestjs/common';
 import { UsersService } from '../../db/users.service';
 import { PurchaseFlow } from './purchase.flow';
+import { PaymentsService } from '../../db/payments.service';
+import { CreditPacksService } from '../../db/credit-packs.service';
 
 @Injectable()
 @Update()
@@ -11,7 +13,9 @@ export class CommandsHandler {
 
   constructor(
     private readonly users: UsersService,
-    private readonly purchaseFlow: PurchaseFlow
+    private readonly purchaseFlow: PurchaseFlow,
+    private readonly payments: PaymentsService,
+    private readonly creditPacksService: CreditPacksService
   ) {}
 
   @Command('start')
@@ -46,13 +50,19 @@ export class CommandsHandler {
           `💰 Balance: ${user.balance} USDT\n` +
           `🎫 Créditos: ${user.credits}\n` +
           `🛍️ Compras totales: ${user.totalPurchases}\n\n` +
+          '🤖 <b>Comandos disponibles:</b>\n' +
+          '• /buy - Comprar fichas\n' +
+          '• /failed_payments - Ver pagos fallidos\n' +
+          '• /refund_status - Consultar devoluciones\n\n' +
           '¿Qué te gustaría hacer?',
           {
             parse_mode: 'HTML',
             reply_markup: {
               inline_keyboard: [
                 [{ text: '🎮 Jugar', web_app: { url: 'https://pumito-mini-app.onrender.com' } }],
-                [{ text: '🪙 Comprar Fichas', callback_data: 'buy_tokens' }]
+                [{ text: '🪙 Comprar Fichas', callback_data: 'buy_tokens' }],
+                [{ text: '📋 Pagos Fallidos', callback_data: 'view_failed_payments' }],
+                [{ text: '💰 Estado Devoluciones', callback_data: 'check_refunds' }]
               ]
             }
           }
@@ -73,6 +83,232 @@ export class CommandsHandler {
       this.logger.error(`Error en callback buy_tokens: ${error.message}`, error.stack);
       await ctx.reply('❌ Error al abrir el menú de compras. Por favor, intenta usar /buy');
       await ctx.answerCbQuery('Error al abrir menú');
+    }
+  }
+
+  @Command('failed_payments')
+  async onFailedPayments(@Ctx() ctx: Context) {
+    try {
+      const user = await this.users.upsertFromContext(ctx);
+      if (!user) {
+        await ctx.reply('❌ Error al obtener información del usuario.');
+        return;
+      }
+
+      const failedPayments = await this.payments.getFailedPayments(user.id);
+      
+      if (failedPayments.length === 0) {
+        await ctx.reply(
+          '✅ <b>No tienes pagos fallidos</b>\n\n' +
+          'Todos tus pagos han sido procesados correctamente.\n\n' +
+          '💡 Puedes realizar una nueva compra con /buy',
+          { parse_mode: 'HTML' }
+        );
+        return;
+      }
+
+      let message = '❌ <b>Pagos Fallidos</b>\n\n';
+      const keyboard = [];
+
+      for (const payment of failedPayments) {
+        const pack = await this.creditPacksService.findByPackId(payment.packId);
+        if (!pack) continue;
+
+        const statusEmoji = {
+          'error': '⚠️',
+          'failed': '❌',
+          'expired': '⏱️',
+          'rejected': '🚫'
+        }[payment.status] || '❓';
+
+        const timeAgo = this.getTimeAgo(payment.createdAt);
+        
+        message += `${statusEmoji} <b>${pack.title}</b>\n`;
+        message += `💰 Precio: $${pack.price} ${pack.currency}\n`;
+        message += `🎫 Créditos: ${pack.amount + (pack.bonusCredits || 0)}\n`;
+        message += `📅 ${timeAgo}\n`;
+        message += `📝 ${payment.statusDetail}\n\n`;
+
+        // Solo agregar botón de reintentar si el pago puede ser reintentado
+        if (['error', 'failed', 'expired'].includes(payment.status)) {
+          keyboard.push([
+            Markup.button.callback(
+              `🔄 Reintentar ${pack.title}`,
+              `retry_payment_${payment._id}`
+            )
+          ]);
+        }
+      }
+
+      message += '💡 Puedes reintentar los pagos fallidos o realizar una nueva compra con /buy';
+
+      keyboard.push([Markup.button.callback('🛍️ Nueva compra', 'new_purchase')]);
+
+      await ctx.reply(message, {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard(keyboard)
+      });
+
+    } catch (error) {
+      this.logger.error(`Error en comando failed_payments: ${error.message}`, error.stack);
+      await ctx.reply('❌ Error al obtener los pagos fallidos. Por favor, intenta nuevamente.');
+    }
+  }
+
+  @Action(/retry_payment_(.+)/)
+  async onRetryPayment(@Ctx() ctx: Context & { match: RegExpExecArray }): Promise<void> {
+    try {
+      const paymentId = ctx.match[1];
+      
+      await ctx.answerCbQuery('🔄 Reintentando pago...');
+      
+      const newPaymentUrl = await this.payments.retryFailedPayment(paymentId);
+      
+      // Obtener información del pago original
+      const originalPayment = await this.payments.getPaymentById(paymentId);
+      if (!originalPayment) {
+        await ctx.reply('❌ No se pudo encontrar el pago original.');
+        return;
+      }
+
+      const pack = await this.creditPacksService.findByPackId(originalPayment.packId);
+      if (!pack) {
+        await ctx.reply('❌ No se pudo encontrar información del pack.');
+        return;
+      }
+
+      const bonusText = pack.bonusCredits > 0 ? ` (+${pack.bonusCredits} bonus)` : '';
+      
+      const message = 
+        `🔄 <b>Pago Reintentado</b>\n\n` +
+        `🛍️ Pack: ${pack.title}\n` +
+        `💰 Precio: $${pack.price} ${pack.currency}\n` +
+        `🎫 Créditos: ${pack.amount + (pack.bonusCredits || 0)}${bonusText}\n\n` +
+        `✅ Se ha generado un nuevo enlace de pago.\n` +
+        `⏱️ El enlace expirará en 30 minutos.`;
+
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.url('💳 Pagar con Mercado Pago', newPaymentUrl)],
+        [Markup.button.callback('❌ Cancelar', 'cancel_payment')]
+      ]);
+
+      await ctx.editMessageText(message, {
+        parse_mode: 'HTML',
+        ...keyboard
+      });
+
+    } catch (error) {
+      this.logger.error(`Error reintentando pago: ${error.message}`, error.stack);
+      await ctx.reply('❌ Error al reintentar el pago. Por favor, intenta nuevamente.');
+      await ctx.answerCbQuery('Error al reintentar');
+    }
+  }
+
+  @Action('view_failed_payments')
+  async onViewFailedPayments(@Ctx() ctx: Context): Promise<void> {
+    try {
+      await ctx.answerCbQuery('📋 Cargando pagos fallidos...');
+      await this.onFailedPayments(ctx);
+    } catch (error) {
+      this.logger.error(`Error en callback view_failed_payments: ${error.message}`, error.stack);
+      await ctx.reply('❌ Error al cargar los pagos fallidos. Por favor, usa /failed_payments');
+      await ctx.answerCbQuery('Error al cargar');
+    }
+  }
+
+  @Command('refund_status')
+  async onRefundStatus(@Ctx() ctx: Context) {
+    try {
+      const user = await this.users.upsertFromContext(ctx);
+      if (!user) {
+        await ctx.reply('❌ Error al obtener información del usuario.');
+        return;
+      }
+
+      // Obtener pagos con devoluciones del usuario
+      const allPayments = await this.payments.getFailedPayments(user.id);
+      const paymentsWithRefunds = [];
+
+      for (const payment of allPayments) {
+        const refundInfo = await this.payments.getRefundStatus(payment._id.toString());
+        if (refundInfo.hasRefund) {
+          paymentsWithRefunds.push({ payment, refundInfo });
+        }
+      }
+
+      if (paymentsWithRefunds.length === 0) {
+        await ctx.reply(
+          '💰 <b>Estado de Devoluciones</b>\n\n' +
+          'No tienes devoluciones pendientes o procesadas.\n\n' +
+          '💡 Las devoluciones se procesan automáticamente cuando hay errores en pagos exitosos.',
+          { parse_mode: 'HTML' }
+        );
+        return;
+      }
+
+      let message = '💰 <b>Estado de Devoluciones</b>\n\n';
+
+      for (const { payment, refundInfo } of paymentsWithRefunds) {
+        const pack = await this.creditPacksService.findByPackId(payment.packId);
+        if (!pack) continue;
+
+        const timeAgo = this.getTimeAgo(payment.createdAt);
+        
+        message += `🛍️ <b>${pack.title}</b>\n`;
+        message += `💰 Monto: $${pack.price} ${pack.currency}\n`;
+        message += `📅 ${timeAgo}\n`;
+
+        if (refundInfo.refundProcessed) {
+          message += `✅ <b>Devolución completada</b>\n`;
+          message += `🆔 ID: ${refundInfo.refundId}\n`;
+          message += `📊 Estado: ${refundInfo.refundStatus}\n`;
+        } else if (refundInfo.refundFailed) {
+          message += `❌ <b>Devolución fallida</b>\n`;
+          message += `📝 Razón: ${refundInfo.refundFailedReason}\n`;
+          message += `⚠️ Contacta soporte para asistencia\n`;
+        } else {
+          message += `⏳ <b>Devolución en proceso</b>\n`;
+          message += `📝 Se procesará en 24-48 horas\n`;
+        }
+        
+        message += '\n';
+      }
+
+      message += '💡 Las devoluciones se procesan automáticamente cuando hay problemas técnicos.';
+
+      await ctx.reply(message, { parse_mode: 'HTML' });
+
+    } catch (error) {
+      this.logger.error(`Error en comando refund_status: ${error.message}`, error.stack);
+      await ctx.reply('❌ Error al consultar el estado de devoluciones. Por favor, intenta nuevamente.');
+    }
+  }
+
+  @Action('check_refunds')
+  async onCheckRefunds(@Ctx() ctx: Context): Promise<void> {
+    try {
+      await ctx.answerCbQuery('💰 Consultando devoluciones...');
+      await this.onRefundStatus(ctx);
+    } catch (error) {
+      this.logger.error(`Error en callback check_refunds: ${error.message}`, error.stack);
+      await ctx.reply('❌ Error al consultar devoluciones. Por favor, usa /refund_status');
+      await ctx.answerCbQuery('Error al consultar');
+    }
+  }
+
+  private getTimeAgo(date: Date): string {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffMins < 60) {
+      return `Hace ${diffMins} minuto${diffMins !== 1 ? 's' : ''}`;
+    } else if (diffHours < 24) {
+      return `Hace ${diffHours} hora${diffHours !== 1 ? 's' : ''}`;
+    } else {
+      return `Hace ${diffDays} día${diffDays !== 1 ? 's' : ''}`;
     }
   }
 }

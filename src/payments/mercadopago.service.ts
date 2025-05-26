@@ -185,4 +185,46 @@ export class MercadoPagoService {
       throw new Error(`Error al cancelar el pago: ${error.message}`);
     }
   }
+
+  async processRefund(paymentId: string, amount?: number): Promise<{ success: boolean; refundId?: string; status?: string; error?: string }> {
+    try {
+      // Primero verificamos que el pago existe y está aprobado
+      const paymentInfo = await this.makeRequest<any>('GET', `/v1/payments/${paymentId}`);
+      
+      if (paymentInfo.status !== 'approved') {
+        throw new Error(`El pago no está aprobado. Estado actual: ${paymentInfo.status}`);
+      }
+
+      // Preparar datos de la devolución
+      const refundData: any = {};
+      
+      // Si se especifica un monto, usarlo; si no, devolver el monto completo
+      if (amount && amount > 0) {
+        if (amount > paymentInfo.transaction_amount) {
+          throw new Error(`El monto de devolución (${amount}) no puede ser mayor al monto del pago (${paymentInfo.transaction_amount})`);
+        }
+        refundData.amount = Number(Number(amount).toFixed(2));
+      }
+
+      this.logger.log(`Procesando devolución para pago ${paymentId}, monto: ${refundData.amount || 'completo'}`);
+
+      // Crear la devolución
+      const refundResponse = await this.makeRequest<any>('POST', `/v1/payments/${paymentId}/refunds`, refundData);
+
+      this.logger.log(`Devolución creada exitosamente: ${refundResponse.id}`);
+
+      return {
+        success: true,
+        refundId: refundResponse.id,
+        status: refundResponse.status
+      };
+
+    } catch (error) {
+      this.logger.error(`Error procesando devolución para pago ${paymentId}: ${error.message}`, error.stack);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
 } 

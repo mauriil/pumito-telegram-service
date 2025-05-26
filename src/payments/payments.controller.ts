@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Get, HttpStatus, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Body, Controller, Post, Get, HttpStatus, Logger, BadRequestException, NotFoundException, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsEnum } from 'class-validator';
 import { PaymentsService } from '../db/payments.service';
@@ -218,6 +218,173 @@ export class PaymentsController {
     } catch (error) {
       this.logger.error(`Error en diagnóstico: ${error.message}`, error.stack);
       throw new BadRequestException(`Error ejecutando diagnóstico: ${error.message}`);
+    }
+  }
+
+  @Get('failed/:userId')
+  @ApiOperation({ 
+    summary: 'Obtener pagos fallidos de un usuario',
+    description: 'Retorna los pagos que han fallado, expirado o fueron rechazados para un usuario específico'
+  })
+  @ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'Lista de pagos fallidos',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          _id: { type: 'string' },
+          userId: { type: 'string' },
+          packId: { type: 'string' },
+          amount: { type: 'number' },
+          credits: { type: 'number' },
+          status: { type: 'string' },
+          statusDetail: { type: 'string' },
+          createdAt: { type: 'string' },
+          errorMessage: { type: 'string' }
+        }
+      }
+    }
+  })
+  async getFailedPayments(@Param('userId') userId: string) {
+    try {
+      if (!userId || userId.trim() === '') {
+        throw new BadRequestException('El ID del usuario es requerido');
+      }
+
+      this.logger.log(`Obteniendo pagos fallidos para usuario: ${userId}`);
+      
+      const failedPayments = await this.paymentsService.getFailedPayments(userId);
+      
+      return {
+        success: true,
+        count: failedPayments.length,
+        payments: failedPayments
+      };
+      
+    } catch (error) {
+      this.logger.error(`Error obteniendo pagos fallidos: ${error.message}`, error.stack);
+      throw new BadRequestException(`Error obteniendo pagos fallidos: ${error.message}`);
+    }
+  }
+
+  @Post('retry/:paymentId')
+  @ApiOperation({ 
+    summary: 'Reintentar un pago fallido',
+    description: 'Crea un nuevo enlace de pago para un pago que falló, expiró o fue rechazado'
+  })
+  @ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'Nuevo enlace de pago creado',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        paymentUrl: { type: 'string' },
+        message: { type: 'string' }
+      }
+    }
+  })
+  async retryPayment(@Param('paymentId') paymentId: string) {
+    try {
+      if (!paymentId || paymentId.trim() === '') {
+        throw new BadRequestException('El ID del pago es requerido');
+      }
+
+      this.logger.log(`Reintentando pago: ${paymentId}`);
+      
+      const newPaymentUrl = await this.paymentsService.retryFailedPayment(paymentId);
+      
+      return {
+        success: true,
+        paymentUrl: newPaymentUrl,
+        message: 'Nuevo enlace de pago creado exitosamente'
+      };
+      
+    } catch (error) {
+      this.logger.error(`Error reintentando pago: ${error.message}`, error.stack);
+      
+      if (error.message.includes('no encontrado')) {
+        throw new NotFoundException(error.message);
+      }
+      
+      throw new BadRequestException(`Error reintentando pago: ${error.message}`);
+    }
+  }
+
+  @Get('refund-status/:paymentId')
+  @ApiOperation({ 
+    summary: 'Consultar estado de devolución de un pago',
+    description: 'Obtiene información sobre el estado de la devolución de un pago específico'
+  })
+  @ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'Estado de devolución obtenido',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        refundInfo: {
+          type: 'object',
+          properties: {
+            hasRefund: { type: 'boolean' },
+            refundRequested: { type: 'boolean' },
+            refundProcessed: { type: 'boolean' },
+            refundFailed: { type: 'boolean' },
+            refundId: { type: 'string' },
+            refundStatus: { type: 'string' },
+            refundFailedReason: { type: 'string' }
+          }
+        }
+      }
+    }
+  })
+  async getRefundStatus(@Param('paymentId') paymentId: string) {
+    try {
+      if (!paymentId || paymentId.trim() === '') {
+        throw new BadRequestException('El ID del pago es requerido');
+      }
+
+      this.logger.log(`Consultando estado de devolución para pago: ${paymentId}`);
+      
+      const refundInfo = await this.paymentsService.getRefundStatus(paymentId);
+      
+      return {
+        success: true,
+        refundInfo
+      };
+      
+    } catch (error) {
+      this.logger.error(`Error consultando estado de devolución: ${error.message}`, error.stack);
+      throw new BadRequestException(`Error consultando estado de devolución: ${error.message}`);
+    }
+  }
+
+  @Get('pending-refunds')
+  @ApiOperation({ 
+    summary: 'Obtener pagos con devoluciones pendientes',
+    description: 'Lista todos los pagos que tienen devoluciones solicitadas pero no procesadas'
+  })
+  @ApiResponse({ 
+    status: HttpStatus.OK, 
+    description: 'Lista de pagos con devoluciones pendientes'
+  })
+  async getPendingRefunds() {
+    try {
+      this.logger.log('Obteniendo pagos con devoluciones pendientes...');
+      
+      const pendingRefunds = await this.paymentsService.getPaymentsWithPendingRefunds();
+      
+      return {
+        success: true,
+        count: pendingRefunds.length,
+        payments: pendingRefunds
+      };
+      
+    } catch (error) {
+      this.logger.error(`Error obteniendo devoluciones pendientes: ${error.message}`, error.stack);
+      throw new BadRequestException(`Error obteniendo devoluciones pendientes: ${error.message}`);
     }
   }
 } 

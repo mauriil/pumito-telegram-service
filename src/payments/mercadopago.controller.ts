@@ -59,13 +59,43 @@ export class MercadoPagoController {
         const paymentStatus = await this.mercadopago.verifyPayment(paymentId);
 
         if (paymentStatus.approved) {
-          await this.payments.markConfirmed(paymentId);
-          this.logger.log(`Pago confirmado para la orden: ${paymentId}`);
+          try {
+            // Intentar confirmar el pago y procesar los créditos
+            await this.payments.markConfirmed(paymentId);
+            this.logger.log(`Pago confirmado para la orden: ${paymentId}`);
 
-          // Actualizar mensaje en Telegram
-          const payment = await this.payments.getPaymentById(paymentId);
-          if (payment && payment.messageId) {
-            await this.telegraf.updatePaymentMessage(payment.userId, paymentId, 'confirmed');
+            // Actualizar mensaje en Telegram
+            const payment = await this.payments.getPaymentById(paymentId);
+            if (payment && payment.messageId) {
+              await this.telegraf.updatePaymentMessage(payment.userId, paymentId, 'confirmed');
+            }
+          } catch (confirmError) {
+            this.logger.error(`Error confirmando pago exitoso en webhook: ${confirmError.message}`, confirmError.stack);
+            
+            // El pago fue exitoso en MercadoPago pero falló al procesar
+            // Marcar como fallido e intentar devolver el dinero
+            await this.payments.markFailedWithRefund(
+              paymentId, 
+              `Pago exitoso pero falló al procesar créditos: ${confirmError.message}`
+            );
+            
+            // Actualizar mensaje en Telegram
+            const paymentForUpdate = await this.payments.getPaymentById(paymentId);
+            if (paymentForUpdate && paymentForUpdate.messageId) {
+              await this.telegraf.updatePaymentMessage(paymentForUpdate.userId, paymentId, 'failed');
+            }
+
+            // Notificar al usuario sobre el problema y la devolución
+            const paymentForNotification = await this.payments.getPaymentById(paymentId);
+            if (paymentForNotification) {
+              await this.telegraf.sendNotification(
+                paymentForNotification.userId,
+                `⚠️ <b>Problema con tu pago</b>\n\n` +
+                `Tu pago fue procesado exitosamente, pero hubo un error al añadir los créditos.\n` +
+                `Estamos procesando la devolución automáticamente.\n\n` +
+                `Si no recibes la devolución en 24-48 horas, contacta soporte.`
+              );
+            }
           }
         } else {
           // Si el pago no está aprobado, lo marcamos como rechazado con el detalle
@@ -97,15 +127,27 @@ export class MercadoPagoController {
       
       if (paymentId) {
         try {
-          await this.payments.markError(paymentId, error.message);
+          // Determinar si es un error crítico que requiere marcar como fallido
+          const isCriticalError = error.message.includes('Cast to ObjectId failed') || 
+                                 error.message.includes('Payment not found') ||
+                                 error.message.includes('Invalid payment data');
+          
+          if (isCriticalError) {
+            await this.payments.markFailed(paymentId, `Error crítico: ${error.message}`);
+            this.logger.log(`Pago marcado como fallido debido a error crítico: ${paymentId}`);
+          } else {
+            await this.payments.markError(paymentId, error.message);
+            this.logger.log(`Pago marcado como error: ${paymentId}`);
+          }
           
           // Actualizar mensaje en Telegram
           const payment = await this.payments.getPaymentById(paymentId);
           if (payment && payment.messageId) {
-            await this.telegraf.updatePaymentMessage(payment.userId, paymentId, 'error');
+            const status = isCriticalError ? 'failed' : 'error';
+            await this.telegraf.updatePaymentMessage(payment.userId, paymentId, status);
           }
         } catch (markError) {
-          this.logger.error(`Error marcando pago como error: ${markError.message}`, markError.stack);
+          this.logger.error(`Error marcando pago como error/fallido: ${markError.message}`, markError.stack);
         }
       }
 
@@ -157,16 +199,61 @@ export class MercadoPagoController {
 
       // Procesar el pago según el estado
       if (paymentStatus.approved) {
-        await this.payments.markConfirmed(paymentId);
-        this.logger.log(`Pago confirmado via back URL para la orden: ${paymentId}`);
+        try {
+          // Intentar confirmar el pago y procesar los créditos
+          await this.payments.markConfirmed(paymentId);
+          this.logger.log(`Pago confirmado via back URL para la orden: ${paymentId}`);
 
-        // Actualizar mensaje en Telegram
-        const payment = await this.payments.getPaymentById(paymentId);
-        if (payment && payment.messageId) {
-          await this.telegraf.updatePaymentMessage(payment.userId, paymentId, 'confirmed');
+          // Actualizar mensaje en Telegram
+          const payment = await this.payments.getPaymentById(paymentId);
+          if (payment && payment.messageId) {
+            await this.telegraf.updatePaymentMessage(payment.userId, paymentId, 'confirmed');
+          }
+
+          return this.renderPaymentResult(res, 'success', 'Pago confirmado exitosamente');
+        } catch (confirmError) {
+          this.logger.error(`Error confirmando pago exitoso: ${confirmError.message}`, confirmError.stack);
+          
+          try {
+            // El pago fue exitoso en MercadoPago pero falló al procesar
+            // Marcar como fallido e intentar devolver el dinero
+            await this.payments.markFailedWithRefund(
+              paymentId, 
+              `Pago exitoso pero falló al procesar créditos: ${confirmError.message}`
+            );
+            
+                         // Actualizar mensaje en Telegram
+             const paymentForUpdate = await this.payments.getPaymentById(paymentId);
+             if (paymentForUpdate && paymentForUpdate.messageId) {
+               await this.telegraf.updatePaymentMessage(paymentForUpdate.userId, paymentId, 'failed');
+             }
+
+             // Notificar al usuario sobre el problema y la devolución
+             const paymentForNotification = await this.payments.getPaymentById(paymentId);
+             if (paymentForNotification) {
+                             await this.telegraf.sendNotification(
+                 paymentForNotification.userId,
+                `⚠️ <b>Problema con tu pago</b>\n\n` +
+                `Tu pago fue procesado exitosamente, pero hubo un error al añadir los créditos.\n` +
+                `Estamos procesando la devolución automáticamente.\n\n` +
+                `Si no recibes la devolución en 24-48 horas, contacta soporte.`
+              );
+            }
+
+            return this.renderPaymentResult(
+              res, 
+              'error', 
+              'Pago procesado pero hubo un error. Se está procesando la devolución automáticamente.'
+            );
+          } catch (refundError) {
+            this.logger.error(`Error procesando devolución: ${refundError.message}`, refundError.stack);
+            return this.renderPaymentResult(
+              res, 
+              'error', 
+              'Error crítico. Por favor contacta soporte con el ID de pago: ' + paymentId
+            );
+          }
         }
-
-        return this.renderPaymentResult(res, 'success', 'Pago confirmado exitosamente');
       } else {
         // Determinar si es un rechazo o está pendiente
         const isRejected = status === 'rejected' || status === 'cancelled' || status === 'failure';
@@ -197,6 +284,25 @@ export class MercadoPagoController {
       }
     } catch (error) {
       this.logger.error(`Error procesando back URL: ${error.message}`, error.stack);
+      
+      // Intentar marcar el pago como error si tenemos el ID
+      const { preference_id, external_reference } = query;
+      const paymentId = preference_id || external_reference;
+      
+      if (paymentId) {
+        try {
+          await this.payments.markError(paymentId, `Error en back URL: ${error.message}`);
+          
+          // Actualizar mensaje en Telegram
+          const payment = await this.payments.getPaymentById(paymentId);
+          if (payment && payment.messageId) {
+            await this.telegraf.updatePaymentMessage(payment.userId, paymentId, 'error');
+          }
+        } catch (markError) {
+          this.logger.error(`Error marcando pago como error en back URL: ${markError.message}`, markError.stack);
+        }
+      }
+      
       return this.renderPaymentResult(res, 'error', 'Error al procesar el pago');
     }
   }
