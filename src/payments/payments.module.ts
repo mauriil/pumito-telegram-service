@@ -5,6 +5,7 @@ import { Payment, PaymentSchema } from '../db/schemas/payment.schema';
 import { PaymentsService } from '../db/payments.service';
 import { MercadoPagoService } from './mercadopago.service';
 import { MercadoPagoController } from './mercadopago.controller';
+import { PaymentsController } from './payments.controller';
 import { SharedModule } from '../shared/shared.module';
 import { TelegramModule } from '../telegram/telegram.module';
 
@@ -17,7 +18,7 @@ import { TelegramModule } from '../telegram/telegram.module';
       { name: Payment.name, schema: PaymentSchema }
     ])
   ],
-  controllers: [MercadoPagoController],
+  controllers: [MercadoPagoController, PaymentsController],
   providers: [PaymentsService, MercadoPagoService],
   exports: [PaymentsService]
 })

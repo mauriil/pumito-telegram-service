@@ -7,7 +7,7 @@ interface MercadoPagoPreferenceRequest {
   amount: number;
   description: string;
   external_reference: string;
-  back_urls: {
+  back_urls?: {
     success: string;
     failure: string;
     pending: string;
@@ -77,9 +77,7 @@ export class MercadoPagoService {
       throw new Error('La referencia externa es requerida');
     }
 
-    if (!payload.back_urls.success || !payload.back_urls.failure || !payload.back_urls.pending) {
-      throw new Error('Las URLs de retorno son requeridas');
-    }
+    // Las back_urls son opcionales - solo necesarias para mejorar UX del usuario
 
     const preferenceData = {
       items: [{
@@ -90,7 +88,7 @@ export class MercadoPagoService {
         currency_id: 'ARS'
       }],
       external_reference: payload.external_reference,
-      back_urls: payload.back_urls,
+      ...(payload.back_urls && { back_urls: payload.back_urls }),
       notification_url: `${this.baseUrl}/webhook/mercadopago`,
       payment_methods: {
         excluded_payment_types: [

@@ -97,11 +97,12 @@ export class PaymentsService {
             amount: pack.price,
             description: `Pack ${pack.id} - ${pack.credits} créditos`,
             external_reference: payment._id.toString(),
-            back_urls: {
-              success: `${process.env.BASE_URL}/payment/success`,
-              failure: `${process.env.BASE_URL}/payment/failure`,
-              pending: `${process.env.BASE_URL}/payment/pending`
-            },
+            // Las back_urls son opcionales - el webhook es suficiente para procesar pagos
+            // back_urls: {
+            //   success: `${process.env.BASE_URL}/payment/success`,
+            //   failure: `${process.env.BASE_URL}/payment/failure`, 
+            //   pending: `${process.env.BASE_URL}/payment/pending`
+            // },
             expires: false // Los enlaces no expiran
           });
           url = this.mercadopago.isProduction ? response.init_point : response.sandbox_init_point;
