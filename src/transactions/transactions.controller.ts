@@ -55,6 +55,9 @@ export class TransactionsController {
     const transactions = await this.transactionsService.getUserTransactions(filters);
     const stats = await this.transactionsService.getUserTransactionStats(userTelegramId);
 
+    const hasTransactions = transactions.length > 0;
+    const isFirstTime = stats.totalTransactions === 0;
+
     return {
       success: true,
       data: {
@@ -70,9 +73,20 @@ export class TransactionsController {
           limit: filters.limit,
           offset: filters.offset,
           hasMore: transactions.length === filters.limit,
+          total: stats.totalTransactions,
+        },
+        meta: {
+          hasTransactions,
+          isFirstTime,
+          isEmpty: !hasTransactions && filters.offset === 0,
+          isFiltered: !!(type || itemType || dateFrom || dateTo),
         },
       },
-      message: 'Transacciones obtenidas exitosamente',
+      message: hasTransactions 
+        ? 'Transacciones obtenidas exitosamente'
+        : isFirstTime 
+          ? 'Usuario sin transacciones aún. ¡Comienza jugando o comprando créditos!'
+          : 'No se encontraron transacciones con los filtros aplicados',
     };
   }
 
@@ -88,6 +102,7 @@ export class TransactionsController {
     }
 
     const stats = await this.transactionsService.getUserTransactionStats(userTelegramId);
+    const hasActivity = stats.totalTransactions > 0;
 
     return {
       success: true,
@@ -99,8 +114,14 @@ export class TransactionsController {
           firstName: user.firstName,
           currentBalance: user.credits,
         },
+        meta: {
+          hasActivity,
+          isNewUser: !hasActivity,
+        },
       },
-      message: 'Estadísticas obtenidas exitosamente',
+      message: hasActivity 
+        ? 'Estadísticas obtenidas exitosamente'
+        : 'Usuario sin actividad aún. Las estadísticas se mostrarán después de la primera transacción.',
     };
   }
 

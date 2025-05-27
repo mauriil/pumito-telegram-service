@@ -367,6 +367,8 @@ export class TransactionsService {
       netAmount: 0,
       totalBetAmount: 0,
       totalWinnings: 0,
+      totalGames: 0,
+      winPercentage: 0,
     };
 
     stats.forEach(stat => {
@@ -396,6 +398,12 @@ export class TransactionsService {
           break;
       }
     });
+
+    // Calcular total de partidas y porcentaje de victorias
+    result.totalGames = result.totalWins + result.totalLosses + result.totalDraws;
+    result.winPercentage = result.totalGames > 0 
+      ? Math.round((result.totalWins / result.totalGames) * 100 * 100) / 100 // Redondear a 2 decimales
+      : 0;
 
     return result;
   }
