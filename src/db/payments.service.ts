@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Connection } from 'mongoose';
+import { InjectConnection } from '@nestjs/mongoose';
 import { Pack } from '../telegram/constants/packs';
 import { MercadoPagoService } from '../payments/mercadopago.service';
 import { Payment, PaymentDocument } from './schemas/payment.schema';
 import { UsersService } from './users.service';
 import { CreditPacksService } from './credit-packs.service';
+import { TransactionsService } from './transactions.service';
 
 @Injectable()
 export class PaymentsService {
@@ -17,6 +19,8 @@ export class PaymentsService {
     private readonly mercadopago: MercadoPagoService,
     private readonly users: UsersService,
     private readonly creditPacksService: CreditPacksService,
+    @InjectConnection() private readonly connection: Connection,
+    private readonly transactionsService: TransactionsService,
   ) {
     // Iniciar el limpiador de pagos expirados
     this.startPaymentCleaner();
@@ -179,46 +183,81 @@ export class PaymentsService {
   }
 
   async markConfirmed(orderId: string): Promise<void> {
+    const session = await this.connection.startSession();
+    
     try {
-      // El orderId puede ser el _id del documento o el paymentId de MercadoPago
-      let payment = await this.paymentModel.findById(orderId);
-      if (!payment) {
-        // Si no se encuentra por _id, buscar por paymentId
-        payment = await this.paymentModel.findOne({ paymentId: orderId });
-      }
-      if (!payment) {
-        this.logger.warn(`Pago no encontrado para la orden: ${orderId}`);
-        return;
-      }
+      await session.withTransaction(async () => {
+        // El orderId puede ser el _id del documento o el paymentId de MercadoPago
+        let payment = await this.paymentModel.findById(orderId).session(session);
+        if (!payment) {
+          // Si no se encuentra por _id, buscar por paymentId
+          payment = await this.paymentModel.findOne({ paymentId: orderId }).session(session);
+        }
+        if (!payment) {
+          this.logger.warn(`Pago no encontrado para la orden: ${orderId}`);
+          return;
+        }
 
-      if (payment.status === 'confirmed') {
-        this.logger.warn(`Pago ya confirmado para la orden: ${orderId}`);
-        return;
-      }
+        if (payment.status === 'confirmed') {
+          this.logger.warn(`Pago ya confirmado para la orden: ${orderId}`);
+          return;
+        }
 
-      if (payment.status === 'expired') {
-        this.logger.warn(`Pago expirado para la orden: ${orderId}`);
-        return;
-      }
+        if (payment.status === 'expired') {
+          this.logger.warn(`Pago expirado para la orden: ${orderId}`);
+          return;
+        }
 
-      // Actualizar estado del pago usando el _id del documento encontrado
-      await this.paymentModel.findByIdAndUpdate(payment._id, {
-        status: 'confirmed',
-        statusDetail: 'Pago confirmado exitosamente',
-        confirmedAt: new Date(),
+        // Obtener información del usuario para la transacción
+        const user = await this.users.findById(payment.userId);
+        if (!user) {
+          throw new Error(`Usuario no encontrado: ${payment.userId}`);
+        }
+
+        // Actualizar estado del pago usando el _id del documento encontrado
+        await this.paymentModel.findByIdAndUpdate(payment._id, {
+          status: 'confirmed',
+          statusDetail: 'Pago confirmado exitosamente',
+          confirmedAt: new Date(),
+        }, { session });
+
+        // Añadir créditos al usuario
+        await this.users.addCredits(payment.userId, payment.credits);
+
+        // Incrementar contador de compras
+        await this.users.incrementTotalPurchases(payment.userId);
+
+        // 🆕 REGISTRAR TRANSACCIÓN DE COMPRA
+        await this.transactionsService.createPurchaseTransaction(
+          user.telegramId,
+          payment.credits,
+          `Compra de ${payment.credits} créditos - Pack ${payment.packId}`,
+          {
+            paymentMethod: payment.paymentMethod || 'mercadopago',
+            paymentId: payment.paymentId,
+            merchantOrderId: payment.merchantOrderId,
+            packId: payment.packId,
+            amount: payment.amount,
+            transactionAmount: payment.transactionAmount,
+            currencyId: payment.currencyId || 'ARS',
+            operationType: payment.operationType,
+            payerId: payment.payerId,
+            payerEmail: payment.payerEmail,
+            siteId: payment.siteId,
+            isTest: payment.isTest,
+            dateApproved: payment.dateApproved,
+            externalReference: orderId,
+          },
+          session
+        );
+
+        this.logger.log(`Pago confirmado, créditos añadidos y transacción registrada para la orden: ${orderId}`);
       });
-
-      // Añadir créditos al usuario
-      const paymentDoc = payment.toObject();
-      await this.users.addCredits(paymentDoc.userId, paymentDoc.credits);
-
-      // Incrementar contador de compras
-      await this.users.incrementTotalPurchases(paymentDoc.userId);
-
-      this.logger.log(`Pago confirmado y créditos añadidos para la orden: ${orderId}`);
     } catch (error) {
       this.logger.error(`Error marcando pago como confirmado: ${error.message}`, error.stack);
       throw error;
+    } finally {
+      await session.endSession();
     }
   }
 
