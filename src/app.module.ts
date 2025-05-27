@@ -8,6 +8,7 @@ import { UsersModule } from './users/users.module';
 import { GamesModule } from './games/games.module';
 import { GameTemplatesModule } from './game-templates/game-templates.module';
 import { CreditPacksModule } from './credit-packs/credit-packs.module';
+import { TransactionsModule } from './transactions/transactions.module';
 import { InitializationModule } from './initialization/initialization.module';
 
 @Module({
@@ -20,6 +21,7 @@ import { InitializationModule } from './initialization/initialization.module';
     GamesModule,
     GameTemplatesModule,
     CreditPacksModule,
+    TransactionsModule,
     InitializationModule,
   ],
 })

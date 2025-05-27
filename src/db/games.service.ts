@@ -1,9 +1,11 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Connection } from 'mongoose';
+import { InjectConnection } from '@nestjs/mongoose';
 import { Game, GameDocument, GameStatus, GameType } from './schemas/game.schema';
 import { User, UserDocument } from './schemas/user.schema';
 import { GameTemplate, GameTemplateDocument } from './schemas/game-template.schema';
+import { TransactionsService } from './transactions.service';
 
 export interface CreateGameDto {
   playerTelegramId: number;
@@ -23,6 +25,16 @@ export interface UpdateGameDto {
   notes?: string;
 }
 
+export interface FinishGameDto {
+  gameId: string;
+  winnerTelegramId?: number;
+  playerScore?: number;
+  opponentScore?: number;
+  status: GameStatus;
+  gameData?: any;
+  notes?: string;
+}
+
 @Injectable()
 export class GamesService {
   private readonly logger = new Logger(GamesService.name);
@@ -31,67 +43,265 @@ export class GamesService {
     @InjectModel(Game.name) private readonly gameModel: Model<GameDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(GameTemplate.name) private readonly gameTemplateModel: Model<GameTemplateDocument>,
+    @InjectConnection() private readonly connection: Connection,
+    private readonly transactionsService: TransactionsService,
   ) {}
 
-  async createGame(createGameDto: CreateGameDto): Promise<GameDocument> {
-    // Encontrar la plantilla del juego
-    const gameTemplate = await this.gameTemplateModel.findOne({ gameId: createGameDto.gameId });
-    if (!gameTemplate) {
-      throw new NotFoundException('Tipo de juego no encontrado');
+  /**
+   * Iniciar una nueva partida con transferencia de créditos
+   */
+  async startGame(createGameDto: CreateGameDto): Promise<GameDocument> {
+    const session = await this.connection.startSession();
+    
+    try {
+      return await session.withTransaction(async () => {
+        // Encontrar la plantilla del juego
+        const gameTemplate = await this.gameTemplateModel.findOne({ gameId: createGameDto.gameId }).session(session);
+        if (!gameTemplate) {
+          throw new NotFoundException('Tipo de juego no encontrado');
+        }
+
+        if (!gameTemplate.isActive) {
+          throw new NotFoundException('Este juego no está disponible actualmente');
+        }
+
+        // Encontrar al jugador
+        const player = await this.userModel.findOne({ telegramId: createGameDto.playerTelegramId }).session(session);
+        if (!player) {
+          throw new NotFoundException('Jugador no encontrado');
+        }
+
+        // Encontrar al oponente si existe
+        let opponent = null;
+        if (createGameDto.opponentTelegramId) {
+          opponent = await this.userModel.findOne({ telegramId: createGameDto.opponentTelegramId }).session(session);
+          if (!opponent) {
+            throw new NotFoundException('Oponente no encontrado');
+          }
+        }
+
+        // Validar créditos suficientes
+        const creditsToWager = createGameDto.creditsWagered || gameTemplate.entryCost;
+        if (player.credits < creditsToWager) {
+          throw new BadRequestException('Créditos insuficientes para jugar este juego');
+        }
+
+        if (opponent && opponent.credits < creditsToWager) {
+          throw new BadRequestException('El oponente no tiene créditos suficientes para jugar');
+        }
+
+        // Descontar créditos apostados de ambos jugadores
+        await this.userModel.findByIdAndUpdate(
+          player._id,
+          { $inc: { credits: -creditsToWager } },
+          { session }
+        );
+
+        if (opponent) {
+          await this.userModel.findByIdAndUpdate(
+            opponent._id,
+            { $inc: { credits: -creditsToWager } },
+            { session }
+          );
+        }
+
+        // Crear el juego
+        const game = new this.gameModel({
+          playerId: player._id,
+          playerTelegramId: createGameDto.playerTelegramId,
+          opponentId: opponent?._id,
+          opponentTelegramId: createGameDto.opponentTelegramId,
+          gameTemplateId: gameTemplate._id,
+          gameId: createGameDto.gameId,
+          gameType: createGameDto.gameType,
+          creditsWagered: creditsToWager,
+          isRanked: createGameDto.isRanked || false,
+          startedAt: new Date(),
+          status: GameStatus.STARTED,
+        });
+
+        const savedGame = await game.save({ session });
+
+        // Incrementar estadísticas de la plantilla
+        await this.gameTemplateModel.findByIdAndUpdate(gameTemplate._id, {
+          $inc: {
+            totalGamesPlayed: 1,
+            totalPlayersParticipated: opponent ? 2 : 1,
+          },
+        }, { session });
+
+        return savedGame;
+      });
+    } finally {
+      await session.endSession();
     }
-
-    if (!gameTemplate.isActive) {
-      throw new NotFoundException('Este juego no está disponible actualmente');
-    }
-
-    // Encontrar al jugador
-    const player = await this.userModel.findOne({ telegramId: createGameDto.playerTelegramId });
-    if (!player) {
-      throw new NotFoundException('Jugador no encontrado');
-    }
-
-    // Encontrar al oponente si existe
-    let opponent = null;
-    if (createGameDto.opponentTelegramId) {
-      opponent = await this.userModel.findOne({ telegramId: createGameDto.opponentTelegramId });
-      if (!opponent) {
-        throw new NotFoundException('Oponente no encontrado');
-      }
-    }
-
-    // Validar créditos suficientes si no se especifican créditos apostados
-    const creditsToWager = createGameDto.creditsWagered || gameTemplate.entryCost;
-    if (player.credits < creditsToWager) {
-      throw new NotFoundException('Créditos insuficientes para jugar este juego');
-    }
-
-    const game = new this.gameModel({
-      playerId: player._id,
-      playerTelegramId: createGameDto.playerTelegramId,
-      opponentId: opponent?._id,
-      opponentTelegramId: createGameDto.opponentTelegramId,
-      gameTemplateId: gameTemplate._id,
-      gameId: createGameDto.gameId,
-      gameType: createGameDto.gameType,
-      creditsWagered: creditsToWager,
-      isRanked: createGameDto.isRanked || false,
-      startedAt: new Date(),
-      status: GameStatus.STARTED,
-    });
-
-    const savedGame = await game.save();
-
-    // Incrementar estadísticas de la plantilla
-    await this.gameTemplateModel.findByIdAndUpdate(gameTemplate._id, {
-      $inc: {
-        totalGamesPlayed: 1,
-        totalPlayersParticipated: opponent ? 2 : 1,
-      },
-    });
-
-    return savedGame;
   }
 
+  /**
+   * Método legacy para compatibilidad
+   */
+  async createGame(createGameDto: CreateGameDto): Promise<GameDocument> {
+    return this.startGame(createGameDto);
+  }
+
+  /**
+   * Finalizar una partida con transferencias automáticas de créditos
+   */
+  async finishGame(finishGameDto: FinishGameDto): Promise<GameDocument> {
+    const session = await this.connection.startSession();
+    
+    try {
+      return await session.withTransaction(async () => {
+        const game = await this.gameModel.findById(finishGameDto.gameId).session(session);
+        if (!game) {
+          throw new NotFoundException('Juego no encontrado');
+        }
+
+        if (game.status !== GameStatus.STARTED) {
+          throw new BadRequestException('Este juego ya ha finalizado');
+        }
+
+        // Actualizar datos del juego
+        game.endedAt = new Date();
+        game.duration = Math.floor((game.endedAt.getTime() - game.startedAt.getTime()) / 1000);
+        game.status = finishGameDto.status;
+        game.playerScore = finishGameDto.playerScore || 0;
+        game.opponentScore = finishGameDto.opponentScore || 0;
+        
+        if (finishGameDto.gameData) {
+          game.gameData = finishGameDto.gameData;
+        }
+        if (finishGameDto.notes) {
+          game.notes = finishGameDto.notes;
+        }
+
+        // Determinar ganador y procesar transferencias
+        await this.processGameFinish(game, finishGameDto.winnerTelegramId, session);
+
+        const updatedGame = await game.save({ session });
+
+        // Actualizar estadísticas del usuario
+        await this.updateUserStats(updatedGame);
+
+        return updatedGame;
+      });
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  /**
+   * Procesar el final del juego con transferencias y transacciones
+   */
+  private async processGameFinish(
+    game: GameDocument,
+    explicitWinnerTelegramId?: number,
+    session?: any
+  ): Promise<void> {
+    const creditsWagered = game.creditsWagered || 0;
+    const totalPrize = creditsWagered * 2; // El ganador se lleva el doble
+
+    if (game.status === GameStatus.DRAW) {
+      // En caso de empate, devolver créditos a ambos jugadores
+      await this.userModel.findByIdAndUpdate(
+        game.playerId,
+        { $inc: { credits: creditsWagered } },
+        { session }
+      );
+
+      if (game.opponentId) {
+        await this.userModel.findByIdAndUpdate(
+          game.opponentId,
+          { $inc: { credits: creditsWagered } },
+          { session }
+        );
+      }
+
+      // Registrar transacciones de empate
+      await this.transactionsService.processDrawTransaction(
+        game,
+        game.playerTelegramId,
+        game.opponentTelegramId,
+        session
+      );
+
+    } else if (game.status === GameStatus.COMPLETED || game.status === GameStatus.WON || game.status === GameStatus.LOST) {
+      // Determinar ganador
+      let winnerTelegramId: number;
+      let loserTelegramId: number;
+
+      if (explicitWinnerTelegramId) {
+        winnerTelegramId = explicitWinnerTelegramId;
+        loserTelegramId = winnerTelegramId === game.playerTelegramId 
+          ? game.opponentTelegramId! 
+          : game.playerTelegramId;
+      } else if (game.status === GameStatus.WON) {
+        winnerTelegramId = game.playerTelegramId;
+        loserTelegramId = game.opponentTelegramId!;
+      } else if (game.status === GameStatus.LOST) {
+        winnerTelegramId = game.opponentTelegramId!;
+        loserTelegramId = game.playerTelegramId;
+      } else {
+        // Determinar por puntuación
+        if (game.playerScore > game.opponentScore) {
+          winnerTelegramId = game.playerTelegramId;
+          loserTelegramId = game.opponentTelegramId!;
+        } else if (game.opponentScore > game.playerScore) {
+          winnerTelegramId = game.opponentTelegramId!;
+          loserTelegramId = game.playerTelegramId;
+        } else {
+          // Empate por puntuación
+          game.status = GameStatus.DRAW;
+          await this.processGameFinish(game, undefined, session);
+          return;
+        }
+      }
+
+      // Encontrar y actualizar al ganador
+      const winner = await this.userModel.findOne({ telegramId: winnerTelegramId }).session(session);
+      if (winner) {
+        await this.userModel.findByIdAndUpdate(
+          winner._id,
+          { $inc: { credits: totalPrize } },
+          { session }
+        );
+        
+        game.creditsWon = totalPrize;
+      }
+
+      // Solo necesitamos actualizar al oponente si hay uno (ya se descontaron los créditos al inicio)
+      if (game.opponentTelegramId) {
+        // Registrar transacciones para ambos jugadores
+        await this.transactionsService.processGameTransactions(
+          game,
+          winnerTelegramId,
+          loserTelegramId,
+          session
+        );
+      }
+    } else if (game.status === GameStatus.ABANDONED) {
+      // En caso de abandono, devolver créditos a ambos jugadores
+      await this.userModel.findByIdAndUpdate(
+        game.playerId,
+        { $inc: { credits: creditsWagered } },
+        { session }
+      );
+
+      if (game.opponentId) {
+        await this.userModel.findByIdAndUpdate(
+          game.opponentId,
+          { $inc: { credits: creditsWagered } },
+          { session }
+        );
+      }
+
+      // No registrar transacciones para juegos abandonados, solo devolver créditos
+    }
+  }
+
+  /**
+   * Método legacy para compatibilidad
+   */
   async updateGame(gameId: string, updateGameDto: UpdateGameDto): Promise<GameDocument> {
     const game = await this.gameModel.findById(gameId);
     if (!game) {
@@ -152,6 +362,133 @@ export class GamesService {
       .populate('opponentId', 'telegramId username firstName')
       .populate('gameTemplateId', 'gameId name backgroundImage estimatedTime')
       .sort({ createdAt: -1 });
+  }
+
+  /**
+   * Buscar juegos entre dos usuarios específicos
+   */
+  async getGamesBetweenUsers(
+    playerTelegramId: number,
+    opponentTelegramId: number,
+    limit = 10,
+    offset = 0
+  ): Promise<{ games: GameDocument[]; summary: any }> {
+    const games = await this.gameModel
+      .find({
+        $or: [
+          { 
+            playerTelegramId: playerTelegramId, 
+            opponentTelegramId: opponentTelegramId 
+          },
+          { 
+            playerTelegramId: opponentTelegramId, 
+            opponentTelegramId: playerTelegramId 
+          }
+        ],
+        status: { $ne: GameStatus.STARTED }
+      })
+      .populate('playerId', 'telegramId username firstName')
+      .populate('opponentId', 'telegramId username firstName')
+      .populate('gameTemplateId', 'gameId name backgroundImage estimatedTime')
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(offset);
+
+    // Calcular estadísticas del enfrentamiento
+    const totalGames = games.length;
+    let playerWins = 0;
+    let opponentWins = 0;
+    let draws = 0;
+
+    games.forEach(game => {
+      if (game.status === GameStatus.DRAW) {
+        draws++;
+      } else if (game.status === GameStatus.WON) {
+        if (game.playerTelegramId === playerTelegramId) {
+          playerWins++;
+        } else {
+          opponentWins++;
+        }
+      } else if (game.status === GameStatus.LOST) {
+        if (game.playerTelegramId === playerTelegramId) {
+          opponentWins++;
+        } else {
+          playerWins++;
+        }
+      } else if (game.status === GameStatus.COMPLETED) {
+        // Determinar ganador por puntuación
+        if (game.playerScore > game.opponentScore) {
+          if (game.playerTelegramId === playerTelegramId) {
+            playerWins++;
+          } else {
+            opponentWins++;
+          }
+        } else if (game.opponentScore > game.playerScore) {
+          if (game.playerTelegramId === playerTelegramId) {
+            opponentWins++;
+          } else {
+            playerWins++;
+          }
+        } else {
+          draws++;
+        }
+      }
+    });
+
+    const summary = {
+      totalGames,
+      playerWins,
+      opponentWins,
+      draws,
+    };
+
+    return { games, summary };
+  }
+
+  /**
+   * Obtener estadísticas globales del sistema
+   */
+  async getGlobalStats(): Promise<any> {
+    const totalGames = await this.gameModel.countDocuments();
+    const activeGames = await this.gameModel.countDocuments({ status: GameStatus.STARTED });
+    const completedGames = await this.gameModel.countDocuments({ 
+      status: { $in: [GameStatus.COMPLETED, GameStatus.WON, GameStatus.LOST, GameStatus.DRAW] }
+    });
+
+    // Calcular duración promedio
+    const avgDurationResult = await this.gameModel.aggregate([
+      { $match: { duration: { $gt: 0 } } },
+      { $group: { _id: null, avgDuration: { $avg: '$duration' } } }
+    ]);
+    const avgGameDuration = avgDurationResult.length > 0 ? avgDurationResult[0].avgDuration : 0;
+
+    // Obtener tipo de juego más popular
+    const popularGameResult = await this.gameModel.aggregate([
+      { $group: { _id: '$gameType', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 1 }
+    ]);
+    const mostPopularGameType = popularGameResult.length > 0 ? popularGameResult[0]._id : 'single_player';
+
+    // Calcular total de créditos en circulación
+    const totalCreditsResult = await this.userModel.aggregate([
+      { $group: { _id: null, totalCredits: { $sum: '$credits' } } }
+    ]);
+    const totalCreditsCirculating = totalCreditsResult.length > 0 ? totalCreditsResult[0].totalCredits : 0;
+
+    // Contar usuarios activos (que han jugado al menos una vez)
+    const activeUsers = await this.userModel.countDocuments({ 'gameStats.totalGames': { $gt: 0 } });
+
+    return {
+      totalGames,
+      activeGames,
+      completedGames,
+      activeUsers,
+      avgGameDuration: Math.round(avgGameDuration),
+      mostPopularGameType,
+      totalCreditsCirculating,
+      lastUpdated: new Date(),
+    };
   }
 
   private async updateUserStats(game: GameDocument): Promise<void> {
