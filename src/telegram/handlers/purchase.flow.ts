@@ -116,7 +116,7 @@ export class PurchaseFlow {
   async onNewPurchase(@Ctx() ctx: Context): Promise<void> {
     try {
       await this.deleteLastMessages(ctx);
-      await this.buy(ctx);
+      // await this.buy(ctx);
       await ctx.answerCbQuery('Nueva compra iniciada');
     } catch (error) {
       this.logger.error(`Error iniciando nueva compra: ${error.message}`, error.stack);
@@ -125,84 +125,84 @@ export class PurchaseFlow {
     }
   }
 
-  @Command('buy')
-  async buy(@Ctx() ctx: Context) {
-    try {
-      await this.deleteLastMessages(ctx);
-      // 1. Enviar mensaje de cargando
-      const loadingMsg = await ctx.reply('🔎 Buscando ofertas y promociones especiales... 🛍️✨');
+  // @Command('buy')
+  // async buy(@Ctx() ctx: Context) {
+  //   try {
+  //     await this.deleteLastMessages(ctx);
+  //     // 1. Enviar mensaje de cargando
+  //     const loadingMsg = await ctx.reply('🔎 Buscando ofertas y promociones especiales... 🛍️✨');
 
-      const user = await this.users.upsertFromContext(ctx);
+  //     const user = await this.users.upsertFromContext(ctx);
 
-      // Verificar si el usuario puede hacer compras
-      const canPurchase = await this.users.canMakePurchase(user.id);
-      if (!canPurchase.can) {
-        await ctx.reply(`❌ No puedes realizar compras en este momento: ${canPurchase.reason}`);
-        // Borrar el mensaje de cargando si hay error
-        if (loadingMsg && loadingMsg.message_id) {
-          await ctx.deleteMessage(loadingMsg.message_id);
-        }
-        return;
-      }
+  //     // Verificar si el usuario puede hacer compras
+  //     const canPurchase = await this.users.canMakePurchase(user.id);
+  //     if (!canPurchase.can) {
+  //       await ctx.reply(`❌ No puedes realizar compras en este momento: ${canPurchase.reason}`);
+  //       // Borrar el mensaje de cargando si hay error
+  //       if (loadingMsg && loadingMsg.message_id) {
+  //         await ctx.deleteMessage(loadingMsg.message_id);
+  //       }
+  //       return;
+  //     }
 
-      // Obtener packs activos de la base de datos
-      const packs = await this.creditPacksService.findActivePacks();
+  //     // Obtener packs activos de la base de datos
+  //     const packs = await this.creditPacksService.findActivePacks();
 
-      if (packs.length === 0) {
-        await ctx.reply(
-          '😔 No hay packs disponibles en este momento. Por favor, intenta más tarde.',
-        );
-        if (loadingMsg && loadingMsg.message_id) {
-          await ctx.deleteMessage(loadingMsg.message_id);
-        }
-        return;
-      }
+  //     if (packs.length === 0) {
+  //       await ctx.reply(
+  //         '😔 No hay packs disponibles en este momento. Por favor, intenta más tarde.',
+  //       );
+  //       if (loadingMsg && loadingMsg.message_id) {
+  //         await ctx.deleteMessage(loadingMsg.message_id);
+  //       }
+  //       return;
+  //     }
 
-      // Generar los links de pago para cada pack
-      const keyboard = [];
-      for (const pack of packs) {
-        // Formato del botón con emoji y información clave usando callback
-        const buttonText = `${pack.emoji || '💎'} ${pack.title} - $${pack.price}`;
-        keyboard.push([Markup.button.callback(buttonText, `pack_${pack.packId}`)]);
-      }
+  //     // Generar los links de pago para cada pack
+  //     const keyboard = [];
+  //     for (const pack of packs) {
+  //       // Formato del botón con emoji y información clave usando callback
+  //       const buttonText = `${pack.emoji || '💎'} ${pack.title} - $${pack.price}`;
+  //       keyboard.push([Markup.button.callback(buttonText, `pack_${pack.packId}`)]);
+  //     }
 
-      // Mensaje final
-      const packsText = packs
-        .map(p => {
-          const bonusText = p.bonusCredits > 0 ? ` +${p.bonusCredits} bonus` : '';
-          const discountText = p.discountPercentage > 0 ? ` (${p.discountPercentage}% OFF)` : '';
-          return (
-            `${p.emoji || '💎'} <b>${p.title}</b>${discountText}\n` +
-            `💰 Precio: $${p.price} ${p.currency}\n` +
-            `🎫 Créditos: ${p.amount}${bonusText}\n` +
-            `📝 ${p.description}\n`
-          );
-        })
-        .join('\n');
+  //     // Mensaje final
+  //     const packsText = packs
+  //       .map(p => {
+  //         const bonusText = p.bonusCredits > 0 ? ` +${p.bonusCredits} bonus` : '';
+  //         const discountText = p.discountPercentage > 0 ? ` (${p.discountPercentage}% OFF)` : '';
+  //         return (
+  //           `${p.emoji || '💎'} <b>${p.title}</b>${discountText}\n` +
+  //           `💰 Precio: $${p.price} ${p.currency}\n` +
+  //           `🎫 Créditos: ${p.amount}${bonusText}\n` +
+  //           `📝 ${p.description}\n`
+  //         );
+  //       })
+  //       .join('\n');
 
-      const message =
-        `💰 <b>Tu Balance Actual</b>\n` +
-        `Balance: ${user.balance} USDT\n` +
-        `Créditos: ${user.credits}\n\n` +
-        `🛍️ <b>Packs Disponibles</b>\n\n` +
-        packsText +
-        `\n💳 Elige un pack para continuar:`;
+  //     const message =
+  //       `💰 <b>Tu Balance Actual</b>\n` +
+  //       `Balance: ${user.balance} USDT\n` +
+  //       `Créditos: ${user.credits}\n\n` +
+  //       `🛍️ <b>Packs Disponibles</b>\n\n` +
+  //       packsText +
+  //       `\n💳 Elige un pack para continuar:`;
 
-      // 3. Borrar el mensaje de cargando
-      if (loadingMsg && loadingMsg.message_id) {
-        await ctx.deleteMessage(loadingMsg.message_id);
-      }
+  //     // 3. Borrar el mensaje de cargando
+  //     if (loadingMsg && loadingMsg.message_id) {
+  //       await ctx.deleteMessage(loadingMsg.message_id);
+  //     }
 
-      // 4. Enviar el mensaje final
-      await ctx.reply(message, {
-        parse_mode: 'HTML',
-        ...Markup.inlineKeyboard(keyboard),
-      });
-    } catch (error) {
-      this.logger.error(`Error in buy command: ${error.message}`, error.stack);
-      await ctx.reply('❌ Error al procesar tu solicitud. Por favor, intenta nuevamente.');
-    }
-  }
+  //     // 4. Enviar el mensaje final
+  //     await ctx.reply(message, {
+  //       parse_mode: 'HTML',
+  //       ...Markup.inlineKeyboard(keyboard),
+  //     });
+  //   } catch (error) {
+  //     this.logger.error(`Error in buy command: ${error.message}`, error.stack);
+  //     await ctx.reply('❌ Error al procesar tu solicitud. Por favor, intenta nuevamente.');
+  //   }
+  // }
 
   @Action(/pack_(.+)/)
   async onPack(@Ctx() ctx: Context & { match: RegExpExecArray }): Promise<void> {

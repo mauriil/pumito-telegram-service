@@ -53,6 +53,6 @@ export class MessageHandler {
   private async processMessage(text: string): Promise<string> {
     // Aquí puedes implementar la lógica para procesar el mensaje
     // Por ahora, solo devolvemos un mensaje simple
-    return `Recibí tu mensaje: "${text}"`;
+    return `Gracias por tu mensaje, en este momento no tengo la posibilidad de razonar y responder. Pero pronto podré hacerlo.`;
   }
 }
