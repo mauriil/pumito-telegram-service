@@ -130,6 +130,9 @@ export class GamesService {
           },
         }, { session });
 
+        // Registrar transacciones iniciales de apuesta
+        await this.transactionsService.createGameStartTransactions(savedGame, session);
+
         return savedGame;
       });
     } finally {
@@ -274,7 +277,7 @@ export class GamesService {
         }
       }
 
-      // Actualizar al ganador y registrar transacciones en paralelo
+      // Actualizar al ganador
       const winner = await this.userModel.findOne({ telegramId: winnerTelegramId }).session(session);
       if (winner) {
         // Actualizar créditos del ganador
@@ -286,7 +289,7 @@ export class GamesService {
 
         game.creditsWon = totalPrize;
 
-        // Registrar transacciones si hay oponente
+        // Registrar transacciones si hay oponente (ganancia del ganador + confirmación de pérdida del perdedor)
         if (game.opponentTelegramId) {
           await this.transactionsService.processGameTransactions(
             game,
@@ -318,6 +321,9 @@ export class GamesService {
 
       // Ejecutar actualizaciones en paralelo
       await Promise.all(updatePromises);
+
+      // Registrar transacciones de abandono
+      await this.transactionsService.processAbandonedGameTransactions(game, session);
 
       // No registrar transacciones para juegos abandonados, solo devolver créditos
     }

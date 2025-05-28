@@ -111,7 +111,88 @@ export class TransactionsService {
   }
 
   /**
+   * Registrar transacciones iniciales cuando se apuestan créditos al iniciar partida
+   */
+  async createGameStartTransactions(
+    game: GameDocument,
+    session?: ClientSession
+  ): Promise<TransactionDocument[]> {
+    const transactions: TransactionDocument[] = [];
+    const creditsWagered = game.creditsWagered || 0;
+
+    if (creditsWagered <= 0) {
+      return transactions; // No hay apuesta, no hay transacción
+    }
+
+    // Obtener usuarios para balances actualizados
+    const player = await this.userModel.findOne({ telegramId: game.playerTelegramId }).session(session);
+    if (!player) {
+      throw new NotFoundException('Jugador no encontrado para registrar transacción inicial');
+    }
+
+    // Transacción para el jugador principal (apuesta)
+    const playerTransaction = new this.transactionModel({
+      userId: player._id,
+      userTelegramId: game.playerTelegramId,
+      type: TransactionType.MATCH,
+      itemType: TransactionItemType.EXPENSE,
+      amount: -creditsWagered, // Gasto de la apuesta
+      betAmount: creditsWagered,
+      winnings: 0,
+      balanceBefore: player.credits + creditsWagered, // Balance antes de apostar
+      balanceAfter: player.credits, // Balance actual (después de apostar)
+      gameId: game._id,
+      gameTemplateId: game.gameTemplateId,
+      opponentTelegramId: game.opponentTelegramId,
+      metadata: {
+        gameType: game.gameType,
+        description: `Apuesta inicial - ${game.gameType}`
+      },
+      date: new Date(),
+      sortDate: new Date(),
+    });
+
+    const savedPlayerTransaction = await playerTransaction.save({ session });
+    transactions.push(savedPlayerTransaction);
+
+    // Transacción para el oponente si existe
+    if (game.opponentTelegramId) {
+      const opponent = await this.userModel.findOne({ telegramId: game.opponentTelegramId }).session(session);
+      if (!opponent) {
+        throw new NotFoundException('Oponente no encontrado para registrar transacción inicial');
+      }
+
+      const opponentTransaction = new this.transactionModel({
+        userId: opponent._id,
+        userTelegramId: game.opponentTelegramId,
+        type: TransactionType.MATCH,
+        itemType: TransactionItemType.EXPENSE,
+        amount: -creditsWagered, // Gasto de la apuesta
+        betAmount: creditsWagered,
+        winnings: 0,
+        balanceBefore: opponent.credits + creditsWagered, // Balance antes de apostar
+        balanceAfter: opponent.credits, // Balance actual (después de apostar)
+        gameId: game._id,
+        gameTemplateId: game.gameTemplateId,
+        opponentTelegramId: game.playerTelegramId,
+        metadata: {
+          gameType: game.gameType,
+          description: `Apuesta inicial - ${game.gameType}`
+        },
+        date: new Date(),
+        sortDate: new Date(),
+      });
+
+      const savedOpponentTransaction = await opponentTransaction.save({ session });
+      transactions.push(savedOpponentTransaction);
+    }
+
+    return transactions;
+  }
+
+  /**
    * Procesar transacciones de partida (ganador y perdedor)
+   * IMPORTANTE: Esta función registra las transacciones DESPUÉS de que los créditos ya fueron transferidos
    */
   async processGameTransactions(
     game: GameDocument,
@@ -120,18 +201,29 @@ export class TransactionsService {
     session?: ClientSession
   ): Promise<{ winnerTransaction: TransactionDocument; loserTransaction: TransactionDocument }> {
     const creditsWagered = game.creditsWagered || 0;
-    const totalPrize = creditsWagered * 2; // El ganador se lleva el doble de lo apostado
+    const netWinnings = creditsWagered; // El ganador gana lo que apostó el perdedor
 
-    // Crear transacción para el ganador
-    const winnerTransaction = await this.createTransaction({
+    // Obtener usuarios para balances actualizados
+    const winner = await this.userModel.findOne({ telegramId: winnerTelegramId }).session(session);
+    const loser = await this.userModel.findOne({ telegramId: loserTelegramId }).session(session);
+
+    if (!winner || !loser) {
+      throw new NotFoundException('Usuario(s) no encontrado(s) para registrar transacciones');
+    }
+
+    // Transacción para el GANADOR (ganancia neta = lo que apostó el oponente)
+    const winnerTransaction = new this.transactionModel({
+      userId: winner._id,
       userTelegramId: winnerTelegramId,
       type: TransactionType.MATCH,
       itemType: TransactionItemType.WIN,
-      amount: totalPrize,
+      amount: netWinnings, // Solo las ganancias netas, no el total
       betAmount: creditsWagered,
-      winnings: totalPrize,
-      gameId: game._id.toString(),
-      winnerId: game.playerId.toString(),
+      winnings: netWinnings,
+      balanceBefore: winner.credits - netWinnings, // Balance antes de la ganancia
+      balanceAfter: winner.credits, // Balance actual (después de ganancia)
+      gameId: game._id,
+      gameTemplateId: game.gameTemplateId,
       winnerTelegramId,
       opponentTelegramId: loserTelegramId,
       metadata: {
@@ -139,19 +231,25 @@ export class TransactionsService {
         gameDuration: game.duration,
         playerScore: game.playerScore,
         opponentScore: game.opponentScore,
-      }
-    }, session);
+        description: `Ganancia de partida - ${game.gameType}`
+      },
+      date: new Date(),
+      sortDate: new Date(),
+    });
 
-    // Crear transacción para el perdedor
-    const loserTransaction = await this.createTransaction({
+    // Transacción para el PERDEDOR (pérdida = lo que apostó)
+    const loserTransaction = new this.transactionModel({
+      userId: loser._id,
       userTelegramId: loserTelegramId,
       type: TransactionType.MATCH,
       itemType: TransactionItemType.LOSS,
-      amount: -creditsWagered,
+      amount: -creditsWagered, // Pérdida (negativo)
       betAmount: creditsWagered,
       winnings: 0,
-      gameId: game._id.toString(),
-      winnerId: game.playerId.toString(),
+      balanceBefore: loser.credits + creditsWagered, // Balance antes de la pérdida
+      balanceAfter: loser.credits, // Balance actual (después de pérdida)
+      gameId: game._id,
+      gameTemplateId: game.gameTemplateId,
       winnerTelegramId,
       opponentTelegramId: winnerTelegramId,
       metadata: {
@@ -159,14 +257,25 @@ export class TransactionsService {
         gameDuration: game.duration,
         playerScore: game.playerScore,
         opponentScore: game.opponentScore,
-      }
-    }, session);
+        description: `Pérdida de partida - ${game.gameType}`
+      },
+      date: new Date(),
+      sortDate: new Date(),
+    });
 
-    return { winnerTransaction, loserTransaction };
+    // Guardar ambas transacciones
+    const savedWinnerTransaction = await winnerTransaction.save({ session });
+    const savedLoserTransaction = await loserTransaction.save({ session });
+
+    return { 
+      winnerTransaction: savedWinnerTransaction, 
+      loserTransaction: savedLoserTransaction 
+    };
   }
 
   /**
    * Procesar transacción de empate
+   * IMPORTANTE: Esta función registra las transacciones DESPUÉS de que los créditos ya fueron devueltos
    */
   async processDrawTransaction(
     game: GameDocument,
@@ -175,47 +284,158 @@ export class TransactionsService {
     session?: ClientSession
   ): Promise<TransactionDocument[]> {
     const transactions: TransactionDocument[] = [];
+    const creditsWagered = game.creditsWagered || 0;
 
-    // Transacción para el jugador principal
-    const playerTransaction = await this.createTransaction({
+    // Obtener usuarios para balances actualizados
+    const player = await this.userModel.findOne({ telegramId: playerTelegramId }).session(session);
+    if (!player) {
+      throw new NotFoundException('Jugador no encontrado para registrar transacción de empate');
+    }
+
+    // Transacción para el jugador principal (empate = recuperación de apuesta)
+    const playerTransaction = new this.transactionModel({
+      userId: player._id,
       userTelegramId: playerTelegramId,
       type: TransactionType.MATCH,
       itemType: TransactionItemType.DRAW,
-      amount: 0, // En empate, no hay transferencia de créditos
-      betAmount: game.creditsWagered || 0,
+      amount: 0, // En empate, no hay ganancia ni pérdida neta
+      betAmount: creditsWagered,
       winnings: 0,
-      gameId: game._id.toString(),
+      balanceBefore: player.credits, // El balance ya fue restaurado
+      balanceAfter: player.credits,
+      gameId: game._id,
+      gameTemplateId: game.gameTemplateId,
       opponentTelegramId,
       metadata: {
         gameType: game.gameType,
         gameDuration: game.duration,
         playerScore: game.playerScore,
         opponentScore: game.opponentScore,
-      }
-    }, session);
+        description: `Empate - ${game.gameType} - Apuesta devuelta`
+      },
+      date: new Date(),
+      sortDate: new Date(),
+    });
 
-    transactions.push(playerTransaction);
+    const savedPlayerTransaction = await playerTransaction.save({ session });
+    transactions.push(savedPlayerTransaction);
 
     // Transacción para el oponente si existe
     if (opponentTelegramId) {
-      const opponentTransaction = await this.createTransaction({
+      const opponent = await this.userModel.findOne({ telegramId: opponentTelegramId }).session(session);
+      if (!opponent) {
+        throw new NotFoundException('Oponente no encontrado para registrar transacción de empate');
+      }
+
+      const opponentTransaction = new this.transactionModel({
+        userId: opponent._id,
         userTelegramId: opponentTelegramId,
         type: TransactionType.MATCH,
         itemType: TransactionItemType.DRAW,
-        amount: 0,
-        betAmount: game.creditsWagered || 0,
+        amount: 0, // En empate, no hay ganancia ni pérdida neta
+        betAmount: creditsWagered,
         winnings: 0,
-        gameId: game._id.toString(),
+        balanceBefore: opponent.credits, // El balance ya fue restaurado
+        balanceAfter: opponent.credits,
+        gameId: game._id,
+        gameTemplateId: game.gameTemplateId,
         opponentTelegramId: playerTelegramId,
         metadata: {
           gameType: game.gameType,
           gameDuration: game.duration,
           playerScore: game.playerScore,
           opponentScore: game.opponentScore,
-        }
-      }, session);
+          description: `Empate - ${game.gameType} - Apuesta devuelta`
+        },
+        date: new Date(),
+        sortDate: new Date(),
+      });
 
-      transactions.push(opponentTransaction);
+      const savedOpponentTransaction = await opponentTransaction.save({ session });
+      transactions.push(savedOpponentTransaction);
+    }
+
+    return transactions;
+  }
+
+  /**
+   * Procesar transacciones de partida abandonada
+   * IMPORTANTE: Esta función registra las transacciones DESPUÉS de que los créditos ya fueron devueltos
+   */
+  async processAbandonedGameTransactions(
+    game: GameDocument,
+    session?: ClientSession
+  ): Promise<TransactionDocument[]> {
+    const transactions: TransactionDocument[] = [];
+    const creditsWagered = game.creditsWagered || 0;
+
+    if (creditsWagered <= 0) {
+      return transactions; // No hay apuesta que devolver
+    }
+
+    // Obtener usuarios para balances actualizados
+    const player = await this.userModel.findOne({ telegramId: game.playerTelegramId }).session(session);
+    if (!player) {
+      throw new NotFoundException('Jugador no encontrado para registrar transacción de abandono');
+    }
+
+    // Transacción para el jugador principal (devolución de apuesta)
+    const playerTransaction = new this.transactionModel({
+      userId: player._id,
+      userTelegramId: game.playerTelegramId,
+      type: TransactionType.MATCH,
+      itemType: TransactionItemType.REFUND,
+      amount: 0, // No hay ganancia ni pérdida neta (se devuelve la apuesta)
+      betAmount: creditsWagered,
+      winnings: 0,
+      balanceBefore: player.credits, // El balance ya fue restaurado
+      balanceAfter: player.credits,
+      gameId: game._id,
+      gameTemplateId: game.gameTemplateId,
+      opponentTelegramId: game.opponentTelegramId,
+      metadata: {
+        gameType: game.gameType,
+        gameDuration: game.duration,
+        description: `Partida abandonada - ${game.gameType} - Apuesta devuelta`
+      },
+      date: new Date(),
+      sortDate: new Date(),
+    });
+
+    const savedPlayerTransaction = await playerTransaction.save({ session });
+    transactions.push(savedPlayerTransaction);
+
+    // Transacción para el oponente si existe
+    if (game.opponentTelegramId) {
+      const opponent = await this.userModel.findOne({ telegramId: game.opponentTelegramId }).session(session);
+      if (!opponent) {
+        throw new NotFoundException('Oponente no encontrado para registrar transacción de abandono');
+      }
+
+      const opponentTransaction = new this.transactionModel({
+        userId: opponent._id,
+        userTelegramId: game.opponentTelegramId,
+        type: TransactionType.MATCH,
+        itemType: TransactionItemType.REFUND,
+        amount: 0, // No hay ganancia ni pérdida neta (se devuelve la apuesta)
+        betAmount: creditsWagered,
+        winnings: 0,
+        balanceBefore: opponent.credits, // El balance ya fue restaurado
+        balanceAfter: opponent.credits,
+        gameId: game._id,
+        gameTemplateId: game.gameTemplateId,
+        opponentTelegramId: game.playerTelegramId,
+        metadata: {
+          gameType: game.gameType,
+          gameDuration: game.duration,
+          description: `Partida abandonada - ${game.gameType} - Apuesta devuelta`
+        },
+        date: new Date(),
+        sortDate: new Date(),
+      });
+
+      const savedOpponentTransaction = await opponentTransaction.save({ session });
+      transactions.push(savedOpponentTransaction);
     }
 
     return transactions;
