@@ -873,11 +873,6 @@ export class UsersController {
 
     const game = await this.gamesService.createGame(createGameDto);
 
-    // Si hay créditos apostados, descontarlos del usuario
-    if (createGameData.creditsWagered && createGameData.creditsWagered > 0) {
-      await this.usersService.addCredits(user._id.toString(), -createGameData.creditsWagered);
-    }
-
     const gameResponse = this.transformGameToResponse(game);
 
     return {

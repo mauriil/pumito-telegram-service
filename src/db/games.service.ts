@@ -212,7 +212,6 @@ export class GamesService {
     session?: any
   ): Promise<void> {
     const creditsWagered = game.creditsWagered || 0;
-    const totalPrize = creditsWagered * 2; // El ganador se lleva el doble
 
     if (game.status === GameStatus.DRAW) {
       // En caso de empate, devolver créditos a ambos jugadores
@@ -277,19 +276,21 @@ export class GamesService {
         }
       }
 
-      // Actualizar al ganador
+      // Actualizar al ganador - SOLO devolver su apuesta + ganar la del oponente
       const winner = await this.userModel.findOne({ telegramId: winnerTelegramId }).session(session);
       if (winner) {
-        // Actualizar créditos del ganador
+        // El ganador recibe: su apuesta devuelta + la apuesta del oponente = creditsWagered * 2
+        const totalPrize = creditsWagered * 2;
+        
         await this.userModel.findByIdAndUpdate(
           winner._id,
           { $inc: { credits: totalPrize } },
           { session }
         );
 
-        game.creditsWon = totalPrize;
+        game.creditsWon = creditsWagered; // Solo la ganancia neta
 
-        // Registrar transacciones si hay oponente (ganancia del ganador + confirmación de pérdida del perdedor)
+        // Registrar transacciones si hay oponente
         if (game.opponentTelegramId) {
           await this.transactionsService.processGameTransactions(
             game,
@@ -324,8 +325,6 @@ export class GamesService {
 
       // Registrar transacciones de abandono
       await this.transactionsService.processAbandonedGameTransactions(game, session);
-
-      // No registrar transacciones para juegos abandonados, solo devolver créditos
     }
   }
 

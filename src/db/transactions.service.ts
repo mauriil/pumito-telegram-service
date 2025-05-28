@@ -201,7 +201,8 @@ export class TransactionsService {
     session?: ClientSession
   ): Promise<{ winnerTransaction: TransactionDocument; loserTransaction: TransactionDocument }> {
     const creditsWagered = game.creditsWagered || 0;
-    const netWinnings = creditsWagered; // El ganador gana lo que apostó el perdedor
+    const totalPrize = creditsWagered * 2; // Lo que realmente recibe el ganador
+    const netWinnings = creditsWagered; // Solo las ganancias netas (lo que ganó del oponente)
 
     // Obtener usuarios para balances actualizados
     const winner = await this.userModel.findOne({ telegramId: winnerTelegramId }).session(session);
@@ -220,8 +221,8 @@ export class TransactionsService {
       amount: netWinnings, // Solo las ganancias netas, no el total
       betAmount: creditsWagered,
       winnings: netWinnings,
-      balanceBefore: winner.credits - netWinnings, // Balance antes de la ganancia
-      balanceAfter: winner.credits, // Balance actual (después de ganancia)
+      balanceBefore: winner.credits - totalPrize, // Balance antes de recibir el premio total
+      balanceAfter: winner.credits, // Balance actual (después de recibir premio total)
       gameId: game._id,
       gameTemplateId: game.gameTemplateId,
       winnerTelegramId,
@@ -246,7 +247,7 @@ export class TransactionsService {
       amount: -creditsWagered, // Pérdida (negativo)
       betAmount: creditsWagered,
       winnings: 0,
-      balanceBefore: loser.credits + creditsWagered, // Balance antes de la pérdida
+      balanceBefore: loser.credits + creditsWagered, // Balance antes de la pérdida (ya se descontó al inicio)
       balanceAfter: loser.credits, // Balance actual (después de pérdida)
       gameId: game._id,
       gameTemplateId: game.gameTemplateId,
