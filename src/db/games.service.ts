@@ -151,7 +151,10 @@ export class GamesService {
     const session = await this.connection.startSession();
     
     try {
-      return await session.withTransaction(async () => {
+      let updatedGame: GameDocument;
+      
+      // Ejecutar las operaciones críticas en transacción
+      updatedGame = await session.withTransaction(async () => {
         const game = await this.gameModel.findById(finishGameDto.gameId).session(session);
         if (!game) {
           throw new NotFoundException('Juego no encontrado');
@@ -178,13 +181,20 @@ export class GamesService {
         // Determinar ganador y procesar transferencias
         await this.processGameFinish(game, finishGameDto.winnerTelegramId, session);
 
-        const updatedGame = await game.save({ session });
-
-        // Actualizar estadísticas del usuario
-        await this.updateUserStats(updatedGame);
-
-        return updatedGame;
+        return await game.save({ session });
       });
+
+      // Actualizar estadísticas fuera de la transacción de forma asíncrona
+      // Esto evita que bloquee la respuesta principal
+      setImmediate(async () => {
+        try {
+          await this.updateUserStats(updatedGame);
+        } catch (error) {
+          this.logger.error('Error actualizando estadísticas del usuario de forma asíncrona', error);
+        }
+      });
+
+      return updatedGame;
     } finally {
       await session.endSession();
     }
@@ -203,19 +213,26 @@ export class GamesService {
 
     if (game.status === GameStatus.DRAW) {
       // En caso de empate, devolver créditos a ambos jugadores
-      await this.userModel.findByIdAndUpdate(
-        game.playerId,
-        { $inc: { credits: creditsWagered } },
-        { session }
-      );
-
-      if (game.opponentId) {
-        await this.userModel.findByIdAndUpdate(
-          game.opponentId,
+      const updatePromises = [
+        this.userModel.findByIdAndUpdate(
+          game.playerId,
           { $inc: { credits: creditsWagered } },
           { session }
+        )
+      ];
+
+      if (game.opponentId) {
+        updatePromises.push(
+          this.userModel.findByIdAndUpdate(
+            game.opponentId,
+            { $inc: { credits: creditsWagered } },
+            { session }
+          )
         );
       }
+
+      // Ejecutar actualizaciones en paralelo
+      await Promise.all(updatePromises);
 
       // Registrar transacciones de empate
       await this.transactionsService.processDrawTransaction(
@@ -257,43 +274,50 @@ export class GamesService {
         }
       }
 
-      // Encontrar y actualizar al ganador
+      // Actualizar al ganador y registrar transacciones en paralelo
       const winner = await this.userModel.findOne({ telegramId: winnerTelegramId }).session(session);
       if (winner) {
+        // Actualizar créditos del ganador
         await this.userModel.findByIdAndUpdate(
           winner._id,
           { $inc: { credits: totalPrize } },
           { session }
         );
-        
-        game.creditsWon = totalPrize;
-      }
 
-      // Solo necesitamos actualizar al oponente si hay uno (ya se descontaron los créditos al inicio)
-      if (game.opponentTelegramId) {
-        // Registrar transacciones para ambos jugadores
-        await this.transactionsService.processGameTransactions(
-          game,
-          winnerTelegramId,
-          loserTelegramId,
-          session
-        );
+        game.creditsWon = totalPrize;
+
+        // Registrar transacciones si hay oponente
+        if (game.opponentTelegramId) {
+          await this.transactionsService.processGameTransactions(
+            game,
+            winnerTelegramId,
+            loserTelegramId,
+            session
+          );
+        }
       }
     } else if (game.status === GameStatus.ABANDONED) {
       // En caso de abandono, devolver créditos a ambos jugadores
-      await this.userModel.findByIdAndUpdate(
-        game.playerId,
-        { $inc: { credits: creditsWagered } },
-        { session }
-      );
-
-      if (game.opponentId) {
-        await this.userModel.findByIdAndUpdate(
-          game.opponentId,
+      const updatePromises = [
+        this.userModel.findByIdAndUpdate(
+          game.playerId,
           { $inc: { credits: creditsWagered } },
           { session }
+        )
+      ];
+
+      if (game.opponentId) {
+        updatePromises.push(
+          this.userModel.findByIdAndUpdate(
+            game.opponentId,
+            { $inc: { credits: creditsWagered } },
+            { session }
+          )
         );
       }
+
+      // Ejecutar actualizaciones en paralelo
+      await Promise.all(updatePromises);
 
       // No registrar transacciones para juegos abandonados, solo devolver créditos
     }
@@ -548,7 +572,7 @@ export class GamesService {
       ? (game.creditsWon || 0) - (game.creditsWagered || 0)
       : -(game.creditsWon || 0);
 
-    // Actualizar estadísticas generales
+    // Preparar todas las actualizaciones en una sola operación
     const gameStatsUpdate: any = {
       $inc: {
         'gameStats.totalGames': 1,
@@ -562,8 +586,18 @@ export class GamesService {
       if (creditsChange > 0) {
         gameStatsUpdate.$inc['gameStats.totalCreditsWon'] = creditsChange;
       }
+      
+      // Calcular la nueva racha y actualizar la máxima si es necesario
+      const newWinStreak = (user.gameStats?.currentWinStreak || 0) + 1;
+      const currentLongestStreak = user.gameStats?.longestWinStreak || 0;
+      if (newWinStreak > currentLongestStreak) {
+        gameStatsUpdate.$set = gameStatsUpdate.$set || {};
+        gameStatsUpdate.$set['gameStats.longestWinStreak'] = newWinStreak;
+      }
     } else {
-      gameStatsUpdate.$set = { 'gameStats.currentWinStreak': 0 };
+      gameStatsUpdate.$set = gameStatsUpdate.$set || {};
+      gameStatsUpdate.$set['gameStats.currentWinStreak'] = 0;
+      
       if (isLoss) {
         gameStatsUpdate.$inc['gameStats.gamesLost'] = 1;
         if (creditsChange < 0) {
@@ -580,26 +614,20 @@ export class GamesService {
       gameStatsUpdate.$inc['gameStats.rankedGames'] = 1;
     }
 
+    // Ejecutar la actualización principal de estadísticas
     await this.userModel.findOneAndUpdate({ telegramId }, gameStatsUpdate);
 
-    // Actualizar racha máxima si es necesario
-    if (isWin) {
-      const updatedUser = await this.userModel.findOne({ telegramId });
-      if (
-        updatedUser &&
-        updatedUser.gameStats.currentWinStreak > updatedUser.gameStats.longestWinStreak
-      ) {
-        await this.userModel.findOneAndUpdate(
-          { telegramId },
-          { $set: { 'gameStats.longestWinStreak': updatedUser.gameStats.currentWinStreak } },
-        );
-      }
-    }
-
-    // Actualizar estadísticas contra oponente específico
+    // Actualizar estadísticas contra oponente específico de forma paralela si existe
     if (game.opponentTelegramId && telegramId !== game.opponentTelegramId) {
       const opponentTelegramId = isMainPlayer ? game.opponentTelegramId : game.playerTelegramId;
-      await this.updateOpponentStats(telegramId, opponentTelegramId, isWin, isLoss, isDraw);
+      // Ejecutar esta operación de forma asíncrona para no bloquear
+      setImmediate(async () => {
+        try {
+          await this.updateOpponentStats(telegramId, opponentTelegramId, isWin, isLoss, isDraw);
+        } catch (error) {
+          this.logger.error('Error actualizando estadísticas de oponente', error);
+        }
+      });
     }
   }
 
