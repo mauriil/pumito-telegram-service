@@ -159,6 +159,8 @@ export class GamesService {
       // Ejecutar las operaciones críticas en transacción
       updatedGame = await session.withTransaction(async () => {
         const game = await this.gameModel.findById(finishGameDto.gameId).session(session);
+        const gameTemplate = await this.gameTemplateModel.findById(game.gameTemplateId).session(session);
+        const creditsWagered = gameTemplate.maxWinnings;
         if (!game) {
           throw new NotFoundException('Juego no encontrado');
         }
@@ -182,7 +184,7 @@ export class GamesService {
         }
 
         // Determinar ganador y procesar transferencias
-        await this.processGameFinish(game, finishGameDto.winnerTelegramId, session);
+        await this.processGameFinish(game, finishGameDto.winnerTelegramId, session, creditsWagered);
 
         return await game.save({ session });
       });
@@ -209,7 +211,8 @@ export class GamesService {
   private async processGameFinish(
     game: GameDocument,
     explicitWinnerTelegramId?: number,
-    session?: any
+    session?: any,
+    creditsToWinner?: number
   ): Promise<void> {
     const creditsWagered = game.creditsWagered || 0;
 
@@ -279,8 +282,7 @@ export class GamesService {
       // Actualizar al ganador - SOLO devolver su apuesta + ganar la del oponente
       const winner = await this.userModel.findOne({ telegramId: winnerTelegramId }).session(session);
       if (winner) {
-        // El ganador recibe: su apuesta devuelta + la apuesta del oponente = creditsWagered * 2
-        const totalPrize = creditsWagered * 2;
+        const totalPrize = creditsToWinner;
         
         await this.userModel.findByIdAndUpdate(
           winner._id,
@@ -288,7 +290,7 @@ export class GamesService {
           { session }
         );
 
-        game.creditsWon = creditsWagered; // Solo la ganancia neta
+        game.creditsWon = creditsToWinner; // Solo la ganancia neta
 
         // Registrar transacciones si hay oponente
         if (game.opponentTelegramId) {
